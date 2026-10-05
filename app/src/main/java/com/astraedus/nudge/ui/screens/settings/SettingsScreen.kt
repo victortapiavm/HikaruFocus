@@ -297,10 +297,11 @@ fun SettingsScreen(
                     FilterChip(
                         selected = instagramDiscoveryBudgetMinutes == minutes,
                         onClick = {
-                            val applyChange = {
+                            val applyChange: () -> Unit = {
                                 coroutineScope.launch {
                                     preferences.setInstagramDiscoveryBudgetMinutes(minutes)
                                 }
+                                Unit
                             }
                             if (
                                 SettingsWeakening.requiresUnlockForInstagramBudget(
