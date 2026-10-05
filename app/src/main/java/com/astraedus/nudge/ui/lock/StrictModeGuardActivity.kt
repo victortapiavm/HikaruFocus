@@ -93,10 +93,10 @@ class StrictModeGuardActivity : ComponentActivity() {
                             target = challengeTarget,
                             prompt = if (nuke) {
                                 "Nuke is on, and this screen is a way around it. Type the code to " +
-                                    "change Nudge's system settings, or go back."
+                                    "change HikaruFocus's system settings, or go back."
                             } else {
                                 "Strict Mode is protecting this screen. " +
-                                    "Unlock to change Nudge's system settings, or go back."
+                                    "Unlock to change HikaruFocus's system settings, or go back."
                             },
                             onUnlock = { onUnlocked() },
                             onCancel = { onChangedMind() },

@@ -53,6 +53,7 @@ class InAppDetectorClipsViewerTest {
         )
 
         assertEquals(InAppDetector.Feature.REELS, detector.detectFeature(ig, root))
+        org.junit.Assert.assertTrue(detector.isInstagramReelPlayer(root))
     }
 
     /**
@@ -90,6 +91,7 @@ class InAppDetectorClipsViewerTest {
         )
 
         assertNull(detector.detectFeature(ig, root))
+        org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(root))
     }
 
     /** The player check must not hijack a surface with no clips containers and no active tab. */
@@ -102,6 +104,7 @@ class InAppDetectorClipsViewerTest {
     @Test
     fun `null root returns null`() {
         assertNull(detector.detectFeature(ig, null))
+        org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(null))
     }
 
     /** The player containers are Instagram-specific and must not leak into YouTube detection. */

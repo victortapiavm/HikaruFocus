@@ -104,6 +104,30 @@ class InstagramSurfacesFixtureTest {
         )
     }
 
+    @Test
+    fun `the search explore discovery door yields its measured cover placement`() {
+        val locator = InstagramSurfaces.discoveryGateTabs.getValue("EXPLORE")
+        val tab = SurfaceFixture.find("home", locator)
+        assertNotNull("search_tab must be present on the home feed", tab)
+        assertEquals(TabCoverPlacement(x = 648, y = 1896, width = 216, height = 132), tab!!.placement())
+    }
+
+    @Test
+    fun `reels and search covers leave messages untouched between them`() {
+        val reels = SurfaceFixture.find(
+            "home",
+            InstagramSurfaces.discoveryGateTabs.getValue("REELS")
+        )!!.placement()
+        val search = SurfaceFixture.find(
+            "home",
+            InstagramSurfaces.discoveryGateTabs.getValue("EXPLORE")
+        )!!.placement()
+
+        assertEquals(432, reels.x + reels.width)
+        assertEquals(648, search.x)
+        assertTrue("the 216px gap is Instagram's Messages tab", search.x - (reels.x + reels.width) == 216)
+    }
+
     /**
      * The measured fact that forbids keying anything on tab selection: **every** tab reports
      * `selected=false`, including the active one. Pinned here so a future contributor who reaches for
@@ -113,8 +137,8 @@ class InstagramSurfacesFixtureTest {
     fun `no bottom-nav tab reports itself as selected`() {
         val tabIds = setOf(
             InstagramSurfaces.ID_CLIPS_TAB,
-            "com.instagram.android:id/feed_tab",
-            "com.instagram.android:id/search_tab",
+            InstagramSurfaces.ID_FEED_TAB,
+            InstagramSurfaces.ID_SEARCH_TAB,
             "com.instagram.android:id/direct_tab",
             "com.instagram.android:id/profile_tab"
         )

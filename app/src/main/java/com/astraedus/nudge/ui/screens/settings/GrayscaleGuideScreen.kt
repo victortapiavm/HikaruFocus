@@ -115,7 +115,7 @@ fun GrayscaleGuideScreen(
                 NumberedStep(5, "Then run this command to grant the permission:")
 
                 AdbCommandCard(
-                    command = "adb shell pm grant com.astraedus.nudge android.permission.WRITE_SECURE_SETTINGS",
+                    command = "adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
                     snackbarHostState = snackbarHostState,
                     scope = scope,
                     context = context
@@ -132,7 +132,7 @@ fun GrayscaleGuideScreen(
                 NumberedStep(4, "Run this command on your computer:")
 
                 AdbCommandCard(
-                    command = "adb shell pm grant com.astraedus.nudge android.permission.WRITE_SECURE_SETTINGS",
+                    command = "adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
                     snackbarHostState = snackbarHostState,
                     scope = scope,
                     context = context

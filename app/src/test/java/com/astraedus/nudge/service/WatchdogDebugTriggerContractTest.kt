@@ -109,7 +109,7 @@ class WatchdogDebugTriggerContractTest {
         ).firstOrNull { it.exists() } ?: error("watchdog architecture doc not found")
         assertTrue(
             "${doc.name} must document the ADB invocation, or the trigger is undiscoverable",
-            doc.readText().contains("dev.astraedus.nudge.debug.RUN_WATCHDOG")
+            doc.readText().contains("dev.vtap.hikarufocus.debug.RUN_WATCHDOG")
         )
     }
 
@@ -136,7 +136,7 @@ class WatchdogDebugTriggerContractTest {
         )
         assertTrue(
             "src/$debugManifest must declare the RUN_WATCHDOG action the ADB command sends",
-            xml(debugManifest).contains("dev.astraedus.nudge.debug.RUN_WATCHDOG")
+            xml(debugManifest).contains("dev.vtap.hikarufocus.debug.RUN_WATCHDOG")
         )
         assertFalse(
             "src/$mainManifest must not mention WatchdogDebugReceiver, a main-manifest entry is " +
@@ -145,7 +145,7 @@ class WatchdogDebugTriggerContractTest {
         )
         assertFalse(
             "src/$mainManifest must not declare the debug trigger action",
-            xml(mainManifest).contains("dev.astraedus.nudge.debug")
+            xml(mainManifest).contains("dev.vtap.hikarufocus.debug")
         )
     }
 

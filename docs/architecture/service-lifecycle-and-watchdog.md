@@ -200,13 +200,13 @@ or if the receiver ever grows a signal read or a decision of its own.
 
 ```bash
 adb shell am broadcast \
-  -a dev.astraedus.nudge.debug.RUN_WATCHDOG \
-  -n dev.astraedus.nudge/com.astraedus.nudge.service.WatchdogDebugReceiver
+  -a dev.vtap.hikarufocus.debug.RUN_WATCHDOG \
+  -n dev.vtap.hikarufocus/com.astraedus.nudge.service.WatchdogDebugReceiver
 ```
 
 The explicit `-n` component is required, not decoration: a custom action is an *implicit* broadcast,
 and manifest-declared receivers have not received those since API 26. Note the two package names
-(`applicationId` is `dev.astraedus.nudge`, `namespace` is `com.astraedus.nudge`) - the component is
+(`applicationId` is `dev.vtap.hikarufocus`, `namespace` is `com.astraedus.nudge`) - the component is
 one of each.
 
 The verdict comes back in the broadcast result, so you read the DECISION rather than inferring it

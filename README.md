@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="store-listing/feature-graphic.png" alt="Nudge — Break the scroll. Take back your time." width="100%">
+  <img src="store-listing/feature-graphic.png" alt="HikaruFocus — focused Android attention controls" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/astraedus/nudge/releases/latest"><img src="https://img.shields.io/github/v/release/astraedus/nudge?style=flat-square&color=8b1a2b" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/astraedus/nudge?style=flat-square&color=8b1a2b" alt="License: GPL-3.0"></a>
+  <a href="https://github.com/victortapiavm/HikaruFocus/actions"><img src="https://img.shields.io/github/actions/workflow/status/victortapiavm/HikaruFocus/hikarufocus-ci.yml?style=flat-square" alt="Build"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/victortapiavm/HikaruFocus?style=flat-square&color=8b1a2b" alt="License: GPL-3.0"></a>
   <img src="https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform: Android 8.0+">
   <img src="https://img.shields.io/badge/internet-none-2e8b57?style=flat-square" alt="Zero Internet Permission">
 </p>
 
 <p align="center">
-  <b>A privacy-first, open-source app blocker for Android.</b><br>
-  Made by <a href="https://github.com/Antimatter543">@Antimatter543</a>. Always free.
+  <b>HikaruFocus: close algorithmic discovery doors without cutting off social links.</b><br>
+  Forked from <a href="https://github.com/astraedus/nudge">Nudge</a> by <a href="https://github.com/Antimatter543">@Antimatter543</a> and retained under GPL-3.0.
 </p>
 
 ---
@@ -30,7 +30,12 @@
 </p>
 
 ---
-## Play Store Download: [Play Store Here](https://play.google.com/store/apps/details?id=dev.astraedus.nudge&hl=en_AU)
+
+## HikaruFocus v0.1 goal
+
+Instagram's full-screen Reel player has a 20-minute daily discovery budget. Once spent, HikaruFocus covers the Reels and Search/Explore bottom-navigation entry points while leaving Home, Messages and Profile available. Reels opened deliberately from DMs, WhatsApp/direct links, notifications or profiles remain playable; reaching Explore by swipe is returned to Home.
+
+HikaruFocus is currently a sideload/development fork. The upstream Nudge app has its own [Play Store listing](https://play.google.com/store/apps/details?id=dev.astraedus.nudge&hl=en_AU); that listing is **not** HikaruFocus.
 
 <a href="https://www.saashub.com/nudge-adhd-app-blocker?utm_source=badge"><img src="https://cdn-b.saashub.com/img/badges/approved-color.png?v=1" alt="Nudge - ADHD App Blocker | Featured on SaaSHub" width="150"></a>
 

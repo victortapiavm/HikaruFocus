@@ -91,7 +91,7 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Nudge",
+                        "HikaruFocus",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.SemiBold
                     )

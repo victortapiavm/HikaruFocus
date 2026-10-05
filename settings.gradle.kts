@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Nudge"
+rootProject.name = "HikaruFocus"
 include(":app")

@@ -111,6 +111,25 @@ class InAppDetector @Inject constructor(
     }
 
     /**
+     * True only for Instagram's actual full-screen Reel player.
+     *
+     * This is intentionally narrower than [Feature.REELS]. Nudge historically treats Instagram's
+     * Home feed as REELS-equivalent for generic doomscroll rules; HikaruFocus's 20-minute discovery
+     * budget must not. The budget counts the player itself regardless of how the user arrived there
+     * (Reels tab, DM, WhatsApp/deep link, profile), while post-budget enforcement closes only the
+     * discovery entry points.
+     */
+    fun isInstagramReelPlayer(rootNode: AccessibilityNodeInfo?): Boolean {
+        if (rootNode == null) return false
+        return try {
+            findsAnyViewId(rootNode, INSTAGRAM_CLIPS_VIEWER_IDS)
+        } catch (e: Exception) {
+            logger.w("instagram reel-player detection failed", e)
+            false
+        }
+    }
+
+    /**
      * DIAGNOSTIC (debug builds only): log the distinct view IDs present when detection found
      * nothing, so an undetected surface can be identified from logcat.
      *
@@ -160,7 +179,7 @@ class InAppDetector @Inject constructor(
         // at all — so tab-based detection cannot see it even in principle, and the user scrolled
         // reels indefinitely with a HARD_BLOCK rule active. Keying on the player's own container
         // covers every entry route, including the Reels tab, where these IDs are also present.
-        if (findsAnyViewId(root, INSTAGRAM_CLIPS_VIEWER_IDS)) {
+        if (isInstagramReelPlayer(root)) {
             logger.d("instagram clips viewer detected")
             return Feature.REELS
         }

@@ -123,7 +123,7 @@ private fun WelcomePage() {
         )
         Spacer(Modifier.height(32.dp))
         Text(
-            "Nudge",
+            "HikaruFocus",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
@@ -179,7 +179,7 @@ private fun PermissionsPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Nudge needs these permissions to work. No data is ever sent anywhere — the app has no internet permission.",
+            "HikaruFocus needs these permissions to work. No data is ever sent anywhere — the app has no internet permission.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -189,7 +189,7 @@ private fun PermissionsPage(
         PermissionCard(
             icon = Icons.Outlined.Accessibility,
             title = "Accessibility Service",
-            description = "Detects which app is in the foreground so Nudge can trigger your block rules. Also identifies in-app screens (like YouTube Shorts or Instagram Reels) by checking navigation elements. Does not read your messages, keystrokes, or screen content.",
+            description = "Detects which app is in the foreground so HikaruFocus can apply your focus rules. Also identifies in-app screens such as Instagram Reels by checking navigation elements. Does not read your messages, keystrokes, or screen content.",
             onClick = { showAccessibilityDisclosure = true }
         )
 
@@ -198,7 +198,7 @@ private fun PermissionsPage(
         PermissionCard(
             icon = Icons.Outlined.Layers,
             title = "Display Over Other Apps",
-            description = "Shows the delay countdown or breathing exercise overlay on top of blocked apps — this is how Nudge presents the pause before opening. Granting it also helps Nudge restart its own protection if Android stops it in the background. Either way, opening Nudge yourself always brings blocking back if it's stopped.",
+            description = "Shows focus overlays on top of selected app surfaces. Granting it also helps HikaruFocus restart its own protection if Android stops it in the background. Either way, opening HikaruFocus yourself brings protection back if it has stopped.",
             onClick = onGrantOverlay
         )
 

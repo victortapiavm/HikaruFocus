@@ -11,6 +11,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.astraedus.nudge.data.export.ExportedSettings
+import com.astraedus.nudge.domain.focus.InstagramDiscoveryBudget
+import com.astraedus.nudge.domain.focus.InstagramDiscoveryBudgetState
 import com.astraedus.nudge.domain.nuke.NukeKeyKind
 import com.astraedus.nudge.domain.nuke.NukeState
 import com.astraedus.nudge.service.GlobalEnabledProvider
@@ -47,6 +49,8 @@ class NudgePreferences @Inject constructor(
         val PIP_ESCAPE_PROMPTED = stringPreferencesKey("pip_escape_prompted")
         val PROTECTION_DEGRADED = booleanPreferencesKey("protection_degraded")
         val PROTECTION_ALERT_SHOWN_AT = longPreferencesKey("protection_alert_shown_at")
+        val INSTAGRAM_REEL_DAY_START_MS = longPreferencesKey("instagram_reel_day_start_ms")
+        val INSTAGRAM_REEL_USED_MS = longPreferencesKey("instagram_reel_used_ms")
 
         // Nuke Mode (docs/architecture/nuke-mode.md). DEVICE-LOCAL, like the emergency-pass
         // ledger: never exported, never importable (pinned by ImportedSettingsWriteContractTest).
@@ -101,6 +105,49 @@ class NudgePreferences @Inject constructor(
         context.dataStore.edit { prefs ->
             prefs[Keys.DEBUG_LOGGING_ENABLED] = enabled
         }
+    }
+
+    /**
+     * HikaruFocus's Instagram discovery budget. Device-local and deliberately NOT exported:
+     * this is today's ephemeral Reel-player usage, not a user-authored rule.
+     *
+     * Only the actual full-screen Reel player writes this counter. Instagram foreground time is
+     * intentionally not a source: Home, DMs and profiles must remain usable without spending the
+     * 20-minute discovery allowance.
+     */
+    val instagramDiscoveryBudgetState: Flow<InstagramDiscoveryBudgetState> = context.dataStore.data
+        .map { prefs ->
+            InstagramDiscoveryBudgetState(
+                dayStartMs = prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] ?: 0L,
+                usedMs = prefs[Keys.INSTAGRAM_REEL_USED_MS] ?: 0L
+            )
+        }
+
+    /**
+     * Atomically add Reel-player foreground time to [todayStartMs].
+     *
+     * A write for an OLDER local day is ignored. That can happen if a periodic checkpoint was
+     * already queued when midnight rolled over and a new-day checkpoint won the DataStore race.
+     * Letting the stale write land would resurrect yesterday's exhausted budget after midnight.
+     */
+    suspend fun recordInstagramReelUsage(
+        todayStartMs: Long,
+        deltaMs: Long
+    ): InstagramDiscoveryBudgetState {
+        var result = InstagramDiscoveryBudget.EMPTY
+        context.dataStore.edit { prefs ->
+            val stored = InstagramDiscoveryBudgetState(
+                dayStartMs = prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] ?: 0L,
+                usedMs = prefs[Keys.INSTAGRAM_REEL_USED_MS] ?: 0L
+            )
+            result = when {
+                stored.dayStartMs > todayStartMs -> stored
+                else -> InstagramDiscoveryBudget.addUsage(stored, todayStartMs, deltaMs)
+            }
+            prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] = result.dayStartMs
+            prefs[Keys.INSTAGRAM_REEL_USED_MS] = result.usedMs
+        }
+        return result
     }
 
     /** Generic "Content Filter" master switch. Opt-in: defaults to false. */

@@ -29,31 +29,30 @@ fun AccessibilityDisclosureDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("How Nudge Works")
+            Text("How HikaruFocus Works")
         },
         text = {
             Column {
                 Text(
-                    "Nudge uses Android's Accessibility Service to detect which app " +
+                    "HikaruFocus uses Android's Accessibility Service to detect which app " +
                         "is currently open on your screen.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "This lets Nudge show breathing exercises, delays, or blocks " +
-                        "when you open apps you've chosen to limit.",
+                    "This lets HikaruFocus apply local focus rules " +
+                        "when you open app surfaces you've chosen to limit.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Nudge only reads the name of the app in the foreground. " +
-                        "It does not read your messages, keystrokes, passwords, " +
-                        "or screen content.",
+                    "HikaruFocus uses the accessibility structure needed to identify selected app surfaces. " +
+                        "It does not transmit your messages, keystrokes, passwords, or screen content.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "All data stays on your device. Nudge has no internet " +
+                    "All data stays on your device. HikaruFocus has no internet " +
                         "permission and cannot send data anywhere.",
                     style = MaterialTheme.typography.bodyMedium
                 )

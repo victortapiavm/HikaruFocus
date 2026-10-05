@@ -49,6 +49,12 @@ object InstagramSurfaces : PlatformSurfaces {
     /** The Reels tab. The tab-vanish cover is drawn over THIS node's bounds. */
     const val ID_CLIPS_TAB = "com.instagram.android:id/clips_tab"
 
+    /** Home tab. HikaruFocus uses it as the safe destination when Explore is reached by swipe. */
+    const val ID_FEED_TAB = "com.instagram.android:id/feed_tab"
+
+    /** Search/Explore tab: the second discovery launchpad HikaruFocus closes after 20 Reel minutes. */
+    const val ID_SEARCH_TAB = "com.instagram.android:id/search_tab"
+
     /** The Home-feed logo. Present only on Home, and only while the action bar is not scrolled away. */
     const val ID_TITLE_LOGO = "com.instagram.android:id/title_logo"
 
@@ -88,6 +94,12 @@ object InstagramSurfaces : PlatformSurfaces {
     /** `clips_tab`'s content description. Fallback for [ID_CLIPS_TAB]. */
     const val DESC_REELS_TAB = "Reels"
 
+    /** `search_tab`'s measured content description. */
+    const val DESC_SEARCH_TAB = "Search and explore"
+
+    /** `feed_tab`'s measured content description. */
+    const val DESC_HOME_TAB = "Home"
+
     // ---------------------------------------------------------------------------------------
     // Colours. THE one place to adjust them.
     // ---------------------------------------------------------------------------------------
@@ -121,6 +133,29 @@ object InstagramSurfaces : PlatformSurfaces {
             viewIds = listOf(ID_CLIPS_TAB),
             contentDescriptions = listOf(DESC_REELS_TAB)
         )
+    )
+
+    /**
+     * HikaruFocus's two algorithmic discovery doors.
+     *
+     * Kept separate from [vanishableTabs] on purpose. Nudge's generic Tab Vanish supports one
+     * hard-blocked feature window at a time; HikaruFocus wants Reels AND Search hidden together
+     * after a separate Reel-player-only budget is spent. The service therefore reuses the same
+     * tested overlay implementation with a second instance for Search rather than changing Nudge's
+     * generic rule semantics.
+     */
+    val discoveryGateTabs: Map<String, NodeLocator> = linkedMapOf(
+        "REELS" to vanishableTabs.getValue("REELS"),
+        "EXPLORE" to NodeLocator(
+            viewIds = listOf(ID_SEARCH_TAB),
+            contentDescriptions = listOf(DESC_SEARCH_TAB)
+        )
+    )
+
+    /** Safe tab used to leave Explore without leaving Instagram. */
+    val homeTab: NodeLocator = NodeLocator(
+        viewIds = listOf(ID_FEED_TAB),
+        contentDescriptions = listOf(DESC_HOME_TAB)
     )
 
     /**

@@ -21,7 +21,7 @@
             android:name=".service.WatchdogDebugReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="dev.astraedus.nudge.debug.RUN_WATCHDOG" />
+                <action android:name="dev.vtap.hikarufocus.debug.RUN_WATCHDOG" />
             </intent-filter>
         </receiver>
 
