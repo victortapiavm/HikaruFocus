@@ -59,6 +59,39 @@ class SettingsWeakeningTest {
         )
     }
 
+    @Test
+    fun `raising instagram discovery budget under strict mode requires the unlock`() {
+        assertTrue(
+            SettingsWeakening.requiresUnlockForInstagramBudget(
+                currentMinutes = 20,
+                requestedMinutes = 30,
+                strictModeEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun `lowering instagram discovery budget under strict mode is free`() {
+        assertFalse(
+            SettingsWeakening.requiresUnlockForInstagramBudget(
+                currentMinutes = 30,
+                requestedMinutes = 15,
+                strictModeEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun `instagram discovery budget changes are free while strict mode is off`() {
+        assertFalse(
+            SettingsWeakening.requiresUnlockForInstagramBudget(
+                currentMinutes = 15,
+                requestedMinutes = 30,
+                strictModeEnabled = false
+            )
+        )
+    }
+
     // --- Strict Mode OFF: nothing is ever gated ---
 
     @Test

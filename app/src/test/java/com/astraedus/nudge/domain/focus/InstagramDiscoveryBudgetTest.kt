@@ -18,11 +18,11 @@ class InstagramDiscoveryBudgetTest {
     }
 
     @Test
-    fun `twenty minutes locks discovery entry points`() {
+    fun `default twenty minutes locks discovery entry points`() {
         val state = InstagramDiscoveryBudget.addUsage(
             InstagramDiscoveryBudget.EMPTY,
             today,
-            InstagramDiscoveryBudget.DAILY_LIMIT_MS
+            InstagramDiscoveryBudget.limitMs(InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES)
         )
 
         assertTrue(InstagramDiscoveryBudget.isLocked(state, today))
@@ -33,7 +33,7 @@ class InstagramDiscoveryBudgetTest {
         val state = InstagramDiscoveryBudget.addUsage(
             InstagramDiscoveryBudget.EMPTY,
             today,
-            InstagramDiscoveryBudget.DAILY_LIMIT_MS - 1_000L
+            InstagramDiscoveryBudget.limitMs(InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES) - 1_000L
         )
 
         assertFalse(InstagramDiscoveryBudget.isLocked(state, today))
@@ -43,7 +43,7 @@ class InstagramDiscoveryBudgetTest {
     fun `local midnight starts a fresh discovery budget`() {
         val exhaustedYesterday = InstagramDiscoveryBudgetState(
             dayStartMs = today,
-            usedMs = InstagramDiscoveryBudget.DAILY_LIMIT_MS + 45_000L
+            usedMs = InstagramDiscoveryBudget.limitMs(InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES) + 45_000L
         )
         val tomorrow = today + 86_400_000L
 
@@ -99,8 +99,43 @@ class InstagramDiscoveryBudgetTest {
     fun `an older day can never overwrite the new day`() {
         val tomorrow = today + 86_400_000L
         val newDay = InstagramDiscoveryBudgetState(tomorrow, 5_000L)
-        val staleYesterday = InstagramDiscoveryBudgetState(today, InstagramDiscoveryBudget.DAILY_LIMIT_MS)
+        val staleYesterday = InstagramDiscoveryBudgetState(
+            today,
+            InstagramDiscoveryBudget.limitMs(InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES)
+        )
 
         assertEquals(newDay, InstagramDiscoveryBudget.mergePersisted(newDay, staleYesterday))
+    }
+
+    @Test
+    fun `custom fifteen minute limit locks before the default limit`() {
+        val fifteenMinutes = InstagramDiscoveryBudget.limitMs(15)
+        val state = InstagramDiscoveryBudget.addUsage(
+            InstagramDiscoveryBudget.EMPTY,
+            today,
+            fifteenMinutes
+        )
+
+        assertTrue(InstagramDiscoveryBudget.isLocked(state, today, limitMinutes = 15))
+        assertFalse(InstagramDiscoveryBudget.isLocked(state, today, limitMinutes = 20))
+    }
+
+    @Test
+    fun `custom thirty minute limit stays open after twenty minutes`() {
+        val state = InstagramDiscoveryBudget.addUsage(
+            InstagramDiscoveryBudget.EMPTY,
+            today,
+            InstagramDiscoveryBudget.limitMs(20)
+        )
+
+        assertFalse(InstagramDiscoveryBudget.isLocked(state, today, limitMinutes = 30))
+    }
+
+    @Test
+    fun `unsupported persisted limit falls back to twenty minutes`() {
+        assertEquals(20, InstagramDiscoveryBudget.sanitizeLimitMinutes(null))
+        assertEquals(20, InstagramDiscoveryBudget.sanitizeLimitMinutes(17))
+        assertEquals(15, InstagramDiscoveryBudget.sanitizeLimitMinutes(15))
+        assertEquals(30, InstagramDiscoveryBudget.sanitizeLimitMinutes(30))
     }
 }

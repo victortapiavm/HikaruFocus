@@ -228,6 +228,7 @@ class NudgeAccessibilityService : AccessibilityService() {
     private val instagramBudgetLock = Any()
     private var instagramBudgetState: InstagramDiscoveryBudgetState = InstagramDiscoveryBudget.EMPTY
     private var instagramBudgetHydrated: Boolean = false
+    private var instagramDiscoveryLimitMinutesCached: Int = InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES
     private var instagramReelCheckpointElapsedMs: Long? = null
     private var instagramReelCheckpointWallMs: Long? = null
     private lateinit var instagramReelClock: ForegroundClock
@@ -1094,6 +1095,18 @@ class NudgeAccessibilityService : AccessibilityService() {
         serviceScope.launch {
             entryPoint.nudgePreferences().strictModeChallengeLength.collect {
                 strictModeChallengeLengthCached = it
+            }
+        }
+        serviceScope.launch {
+            entryPoint.nudgePreferences().instagramDiscoveryBudgetMinutes.collect { minutes ->
+                val changed = synchronized(instagramBudgetLock) {
+                    val changed = instagramDiscoveryLimitMinutesCached != minutes
+                    instagramDiscoveryLimitMinutesCached = minutes
+                    changed
+                }
+                if (changed && globalEnabledCached && synchronized(instagramBudgetLock) { instagramBudgetHydrated }) {
+                    withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
+                }
             }
         }
 
@@ -2700,8 +2713,8 @@ class NudgeAccessibilityService : AccessibilityService() {
 
     /**
      * Edge-trigger the dedicated Reel-player clock from the debounced Instagram tree observation.
-     * Starting it never enforces anything: reaching 20 minutes only changes what happens the next
-     * time the bottom navigation (or Explore) is observed.
+     * Starting it never enforces anything: reaching the configured limit only changes what happens
+     * the next time the bottom navigation (or Explore) is observed.
      */
     private fun observeInstagramReelPlayer(visible: Boolean) {
         if (!visible) {
@@ -2755,15 +2768,18 @@ class NudgeAccessibilityService : AccessibilityService() {
         if (synchronized(instagramBudgetLock) { instagramBudgetHydrated }) return
 
         val todayStart = instagramBudgetTimeTracker.startOfToday()
+        val preferences = entryPoint.nudgePreferences()
         val persisted = InstagramDiscoveryBudget.normalize(
-            entryPoint.nudgePreferences().instagramDiscoveryBudgetState.first(),
+            preferences.instagramDiscoveryBudgetState.first(),
             todayStart
         )
+        val configuredLimitMinutes = preferences.instagramDiscoveryBudgetMinutes.first()
 
         val mergedToPersist = synchronized(instagramBudgetLock) {
             if (instagramBudgetHydrated) return@synchronized null
             val pending = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).usedMs
             instagramBudgetState = InstagramDiscoveryBudget.addUsage(persisted, todayStart, pending)
+            instagramDiscoveryLimitMinutesCached = configuredLimitMinutes
             instagramBudgetHydrated = true
             instagramBudgetState.takeIf { pending > 0L }
         }
@@ -2801,17 +2817,27 @@ class NudgeAccessibilityService : AccessibilityService() {
             }
             if (creditedMs <= 0L) return
 
-            val beforeLocked = InstagramDiscoveryBudget.isLocked(instagramBudgetState, todayStart)
+            val limitMinutes = instagramDiscoveryLimitMinutesCached
+            val beforeLocked = InstagramDiscoveryBudget.isLocked(
+                instagramBudgetState,
+                todayStart,
+                limitMinutes
+            )
             instagramBudgetState = InstagramDiscoveryBudget.addUsage(
                 instagramBudgetState,
                 todayStart,
                 creditedMs
             )
-            val afterLocked = InstagramDiscoveryBudget.isLocked(instagramBudgetState, todayStart)
+            val afterLocked = InstagramDiscoveryBudget.isLocked(
+                instagramBudgetState,
+                todayStart,
+                limitMinutes
+            )
             ReelBudgetCheckpoint(
                 dayStartMs = todayStart,
                 deltaMs = creditedMs,
                 usedMs = instagramBudgetState.usedMs,
+                limitMinutes = limitMinutes,
                 becameLocked = !beforeLocked && afterLocked,
                 persistNow = instagramBudgetHydrated
             )
@@ -2823,7 +2849,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         )
         if (checkpoint.becameLocked) {
             entryPoint.nudgeLogger().i(
-                "instagram discovery budget reached limitMinutes=${InstagramDiscoveryBudget.DAILY_LIMIT_MINUTES}; " +
+                "instagram discovery budget reached limitMinutes=${checkpoint.limitMinutes}; " +
                     "reel player remains allowed"
             )
         }
@@ -2863,7 +2889,8 @@ class NudgeAccessibilityService : AccessibilityService() {
                 instagramBudgetState = it
             }
         }
-        return InstagramDiscoveryBudget.isLocked(current, todayStart)
+        val limitMinutes = synchronized(instagramBudgetLock) { instagramDiscoveryLimitMinutesCached }
+        return InstagramDiscoveryBudget.isLocked(current, todayStart, limitMinutes)
     }
 
     /** Cheap synchronous answer used only to choose the post-budget detection cadence. */
@@ -2873,7 +2900,11 @@ class NudgeAccessibilityService : AccessibilityService() {
             if (!instagramBudgetHydrated) return@synchronized false
             val current = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart)
             instagramBudgetState = current
-            InstagramDiscoveryBudget.isLocked(current, todayStart)
+            InstagramDiscoveryBudget.isLocked(
+                current,
+                todayStart,
+                instagramDiscoveryLimitMinutesCached
+            )
         }
     }
 
@@ -2916,6 +2947,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         val dayStartMs: Long,
         val deltaMs: Long,
         val usedMs: Long,
+        val limitMinutes: Int,
         val becameLocked: Boolean,
         val persistNow: Boolean
     )

@@ -95,6 +95,7 @@ class ImportedSettingsWriteContractTest {
             "PIP_ESCAPE_PROMPTED",
             "DEBUG_LOGGING_ENABLED",
             "GLOBAL_ENABLED",
+            "INSTAGRAM_REEL_LIMIT_MINUTES",
             // Nuke Mode: an import is the one write path that bypasses every screen, so it must
             // never be able to end Nuke, swap its key or change its list (docs/architecture/nuke-mode.md).
             "NUKE_ACTIVE",
@@ -133,7 +134,13 @@ class ImportedSettingsWriteContractTest {
         ).forEach { field ->
             assertTrue("$field must be exported as well as importable", exportBody.contains("$field ="))
         }
-        listOf("isGlobalEnabled", "isOnboardingComplete", "isDebugLoggingEnabled", "emergencyPassUsage")
+        listOf(
+            "isGlobalEnabled",
+            "isOnboardingComplete",
+            "isDebugLoggingEnabled",
+            "emergencyPassUsage",
+            "instagramDiscoveryBudgetMinutes"
+        )
             .forEach { flow ->
                 assertTrue(
                     "$flow is device-local and must not be exported",

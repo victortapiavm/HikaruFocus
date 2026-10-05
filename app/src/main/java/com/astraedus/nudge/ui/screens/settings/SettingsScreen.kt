@@ -73,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import com.astraedus.nudge.BuildConfig
 import com.astraedus.nudge.R
 import com.astraedus.nudge.data.preferences.NudgePreferences
+import com.astraedus.nudge.domain.focus.InstagramDiscoveryBudget
 import com.astraedus.nudge.domain.lock.LockedToggle
 import com.astraedus.nudge.domain.lock.SettingsWeakening
 import com.astraedus.nudge.domain.lock.StrictModeChallenge
@@ -116,6 +117,9 @@ fun SettingsScreen(
     val debugLoggingEnabled by preferences.isDebugLoggingEnabled.collectAsStateWithLifecycle(initialValue = false)
     val contentFilterEnabled by preferences.contentFilterEnabled.collectAsStateWithLifecycle(initialValue = false)
     val contentFilterStrictKeywords by preferences.contentFilterStrictKeywords.collectAsStateWithLifecycle(initialValue = false)
+    val instagramDiscoveryBudgetMinutes by preferences.instagramDiscoveryBudgetMinutes.collectAsStateWithLifecycle(
+        initialValue = InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES
+    )
     val strictModeEnabled by preferences.isStrictModeEnabled.collectAsStateWithLifecycle(initialValue = false)
     val strictModeLength by preferences.strictModeChallengeLength.collectAsStateWithLifecycle(
         initialValue = StrictModeChallenge.DEFAULT_LENGTH
@@ -263,6 +267,61 @@ fun SettingsScreen(
                 icon = { Icon(Icons.Outlined.InvertColors, contentDescription = null) },
                 onClick = onNavigateToGrayscaleGuide
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
+                "Instagram Focus",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            ListItem(
+                headlineContent = { Text("Reels discovery budget") },
+                supportingContent = {
+                    Text(
+                        "After this much Reel-player time today, Reels and Search/Explore are closed. " +
+                            "Reels opened from DMs, links or profiles still work."
+                    )
+                },
+                leadingContent = { Icon(Icons.Outlined.Timer, contentDescription = null) }
+            )
+
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                InstagramDiscoveryBudget.SUPPORTED_LIMIT_MINUTES.forEach { minutes ->
+                    FilterChip(
+                        selected = instagramDiscoveryBudgetMinutes == minutes,
+                        onClick = {
+                            val applyChange = {
+                                coroutineScope.launch {
+                                    preferences.setInstagramDiscoveryBudgetMinutes(minutes)
+                                }
+                            }
+                            if (
+                                SettingsWeakening.requiresUnlockForInstagramBudget(
+                                    currentMinutes = instagramDiscoveryBudgetMinutes,
+                                    requestedMinutes = minutes,
+                                    strictModeEnabled = strictModeEnabled
+                                )
+                            ) {
+                                pendingUnlock = PendingSettingsUnlock(
+                                    target = StrictModeChallenge.generate(strictModeLength),
+                                    prompt = "Increase Reels discovery budget",
+                                    onUnlock = applyChange
+                                )
+                            } else {
+                                applyChange()
+                            }
+                        },
+                        label = { Text("$minutes min") }
+                    )
+                }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 

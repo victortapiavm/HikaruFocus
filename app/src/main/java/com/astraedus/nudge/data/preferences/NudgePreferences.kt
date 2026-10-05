@@ -51,6 +51,7 @@ class NudgePreferences @Inject constructor(
         val PROTECTION_ALERT_SHOWN_AT = longPreferencesKey("protection_alert_shown_at")
         val INSTAGRAM_REEL_DAY_START_MS = longPreferencesKey("instagram_reel_day_start_ms")
         val INSTAGRAM_REEL_USED_MS = longPreferencesKey("instagram_reel_used_ms")
+        val INSTAGRAM_REEL_LIMIT_MINUTES = intPreferencesKey("instagram_reel_limit_minutes")
 
         // Nuke Mode (docs/architecture/nuke-mode.md). DEVICE-LOCAL, like the emergency-pass
         // ledger: never exported, never importable (pinned by ImportedSettingsWriteContractTest).
@@ -113,7 +114,7 @@ class NudgePreferences @Inject constructor(
      *
      * Only the actual full-screen Reel player writes this counter. Instagram foreground time is
      * intentionally not a source: Home, DMs and profiles must remain usable without spending the
-     * 20-minute discovery allowance.
+     * configured discovery allowance.
      */
     val instagramDiscoveryBudgetState: Flow<InstagramDiscoveryBudgetState> = context.dataStore.data
         .map { prefs ->
@@ -122,6 +123,28 @@ class NudgePreferences @Inject constructor(
                 usedMs = prefs[Keys.INSTAGRAM_REEL_USED_MS] ?: 0L
             )
         }
+
+    /**
+     * User-configurable HikaruFocus discovery threshold. This is intentionally separate from
+     * Nudge's generic per-rule dailyLimitMinutes: it only controls the Reel-player budget that
+     * closes Instagram's Reels and Search/Explore discovery doors.
+     */
+    val instagramDiscoveryBudgetMinutes: Flow<Int> = context.dataStore.data
+        .map { prefs ->
+            InstagramDiscoveryBudget.sanitizeLimitMinutes(
+                prefs[Keys.INSTAGRAM_REEL_LIMIT_MINUTES]
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun setInstagramDiscoveryBudgetMinutes(minutes: Int) {
+        require(minutes in InstagramDiscoveryBudget.SUPPORTED_LIMIT_MINUTES) {
+            "Unsupported Instagram discovery budget: $minutes"
+        }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.INSTAGRAM_REEL_LIMIT_MINUTES] = minutes
+        }
+    }
 
     /**
      * Persist an already-accumulated ABSOLUTE state.

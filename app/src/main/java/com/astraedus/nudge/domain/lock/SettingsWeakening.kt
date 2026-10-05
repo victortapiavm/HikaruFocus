@@ -33,6 +33,13 @@ object SettingsWeakening {
     fun requiresUnlock(toggle: LockedToggle, enable: Boolean, strictModeEnabled: Boolean): Boolean =
         strictModeEnabled && isWeakening(toggle, enable)
 
+    /** Raising the Reel discovery budget weakens protection; lowering it strengthens protection. */
+    fun requiresUnlockForInstagramBudget(
+        currentMinutes: Int,
+        requestedMinutes: Int,
+        strictModeEnabled: Boolean
+    ): Boolean = strictModeEnabled && requestedMinutes > currentMinutes
+
     private fun isWeakening(toggle: LockedToggle, enable: Boolean): Boolean = when (toggle) {
         LockedToggle.STRICT_MODE -> !enable
         LockedToggle.EMERGENCY_PASS -> enable

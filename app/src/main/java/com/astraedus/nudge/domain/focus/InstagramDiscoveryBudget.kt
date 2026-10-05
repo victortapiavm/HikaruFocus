@@ -19,8 +19,8 @@ data class InstagramDiscoveryBudgetState(
 )
 
 object InstagramDiscoveryBudget {
-    const val DAILY_LIMIT_MINUTES: Int = 20
-    const val DAILY_LIMIT_MS: Long = DAILY_LIMIT_MINUTES * 60L * 1000L
+    const val DEFAULT_LIMIT_MINUTES: Int = 20
+    val SUPPORTED_LIMIT_MINUTES: List<Int> = listOf(15, 20, 30)
 
     val EMPTY = InstagramDiscoveryBudgetState(dayStartMs = 0L, usedMs = 0L)
 
@@ -53,8 +53,15 @@ object InstagramDiscoveryBudget {
 
     fun isLocked(
         state: InstagramDiscoveryBudgetState,
-        todayStartMs: Long
-    ): Boolean = normalize(state, todayStartMs).usedMs >= DAILY_LIMIT_MS
+        todayStartMs: Long,
+        limitMinutes: Int = DEFAULT_LIMIT_MINUTES
+    ): Boolean = normalize(state, todayStartMs).usedMs >= limitMs(limitMinutes)
+
+    fun sanitizeLimitMinutes(limitMinutes: Int?): Int =
+        limitMinutes?.takeIf { it in SUPPORTED_LIMIT_MINUTES } ?: DEFAULT_LIMIT_MINUTES
+
+    fun limitMs(limitMinutes: Int): Long =
+        sanitizeLimitMinutes(limitMinutes) * 60L * 1000L
 
     /**
      * Merge two absolute persisted snapshots without ever moving a day or its usage backwards.
