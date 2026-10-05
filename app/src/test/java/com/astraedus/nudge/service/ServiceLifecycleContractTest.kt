@@ -442,4 +442,26 @@ class ServiceLifecycleContractTest {
             text.contains("rootInActiveWindow?.packageName")
         )
     }
+
+    @Test
+    fun `instagram reel accounting does not restart on rebind while globally disabled`() {
+        val text = source("main/java/com/astraedus/nudge/service/NudgeAccessibilityService.kt")
+        val connected = text.substringAfter("override fun onServiceConnected()")
+            .substringBefore("override fun onAccessibilityEvent(")
+        val hydrate = connected.indexOf("hydrateInstagramBudgetIfNeeded()")
+        val enabledRead = connected.indexOf("isGlobalEnabled.first()", startIndex = hydrate.coerceAtLeast(0))
+        val observe = connected.indexOf("observeInstagramActiveWindow()", startIndex = hydrate.coerceAtLeast(0))
+
+        assertTrue("rebind must hydrate the persisted Instagram budget", hydrate >= 0)
+        assertTrue(
+            "the Reel rebind probe must read the persisted master toggle instead of the optimistic " +
+                "globalEnabledCached default, or a disabled HikaruFocus can spend Reel budget",
+            enabledRead >= 0
+        )
+        assertTrue(
+            "the master-toggle read must guard the live Instagram observation on rebind " +
+                "(enabledRead=$enabledRead observe=$observe)",
+            observe > enabledRead
+        )
+    }
 }

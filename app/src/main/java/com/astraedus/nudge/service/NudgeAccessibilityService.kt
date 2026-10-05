@@ -1019,9 +1019,15 @@ class NudgeAccessibilityService : AccessibilityService() {
         // A service/process rebind may happen while Instagram is already sitting in a Reel player,
         // with no fresh navigation event guaranteed. The one live-root read resumes accounting and
         // restores both discovery-door covers/backstops without blocking a Reel already on screen.
+        // Read the persisted master toggle here instead of trusting globalEnabledCached: that cache
+        // deliberately starts optimistic until its collector emits, and a disabled HikaruFocus must
+        // behave as if uninstalled -- including NOT spending the Reel discovery budget during a
+        // service rebind race.
         serviceScope.launch {
             hydrateInstagramBudgetIfNeeded()
-            withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
+            if (entryPoint.nudgePreferences().isGlobalEnabled.first()) {
+                withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
+            }
         }
         webClock = ForegroundClock(
             scope = serviceScope,
