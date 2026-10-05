@@ -230,9 +230,9 @@ fun SettingsScreen(
             PermissionItem(
                 title = "Overlay Permission",
                 description = if (overlayEnabled) {
-                    "Shows block screens and helps Nudge restart protection if Android stops it in the background"
+                    "Shows block screens and helps HikaruFocus restart protection if Android stops it in the background"
                 } else {
-                    "Off — Nudge can't show block screens, and Android is more likely to stop protection until you reopen the app"
+                    "Off — HikaruFocus can't show block screens, and Android is more likely to stop protection until you reopen the app"
                 },
                 granted = overlayEnabled,
                 icon = { Icon(Icons.Outlined.Layers, contentDescription = null) },
@@ -494,7 +494,7 @@ fun SettingsScreen(
             ListItem(
                 headlineContent = { Text("Version") },
                 supportingContent = {
-                    Text("Nudge v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+                    Text("HikaruFocus v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
                 },
                 leadingContent = { Icon(Icons.Outlined.Info, contentDescription = null) },
                 modifier = Modifier.clickable {

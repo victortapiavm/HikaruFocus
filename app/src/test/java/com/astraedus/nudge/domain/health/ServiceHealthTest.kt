@@ -99,7 +99,7 @@ class ServiceHealthTest {
                 )
             }
         }
-        assertEquals("Nudge is active", ServiceHealth.ACTIVE.notificationCopy().title)
+        assertEquals("HikaruFocus is active", ServiceHealth.ACTIVE.notificationCopy().title)
     }
 
     /**

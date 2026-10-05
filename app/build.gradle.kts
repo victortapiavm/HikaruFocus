@@ -24,8 +24,8 @@ android {
         applicationId = "dev.vtap.hikarufocus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 60
-        versionName = "1.21.0"
+        versionCode = 1
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

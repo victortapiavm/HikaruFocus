@@ -76,7 +76,7 @@ fun PipEscapeContent(
 
             Text(
                 text = "$subject kept playing in a floating picture-in-picture window, so " +
-                    "Nudge's block could not cover it. Android does not let an app switch that " +
+                    "HikaruFocus's block could not cover it. Android does not let an app switch that " +
                     "off for you.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -86,7 +86,7 @@ fun PipEscapeContent(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Turn off picture-in-picture for $subject and Nudge can block it properly.",
+                text = "Turn off picture-in-picture for $subject and HikaruFocus can block it properly.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -125,7 +125,7 @@ fun PipEscapeContent(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "Nudge only shows this once for each app.",
+                text = "HikaruFocus only shows this once for each app.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center

@@ -51,8 +51,8 @@ If that isn't something you have set up, skip it and just describe what happened
 genuinely fine, and most reports arrive that way.
 
 ```bash
-# everything Nudge logged (attach this file)
-adb logcat -d --pid=$(adb shell pidof dev.astraedus.nudge) > nudge-log.txt
+# everything HikaruFocus logged (attach this file)
+adb logcat -d --pid=$(adb shell pidof dev.vtap.hikarufocus) > hikarufocus-log.txt
 
 # accessibility events only — smaller, and the most useful part for a blocking bug
 adb logcat -s NudgeA11yTrace:I > nudge-events.txt

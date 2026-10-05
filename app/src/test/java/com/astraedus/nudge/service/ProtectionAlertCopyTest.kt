@@ -149,13 +149,13 @@ class ProtectionAlertCopyTest {
             blocked.contains("foreground service") || blocked.contains("exemption")
         )
         assertTrue(
-            "The blocked body must ALSO offer opening Nudge, and that offer must survive edits. " +
+            "The blocked body must ALSO offer opening HikaruFocus, and that offer must survive edits. " +
                 "Android 16 narrows the overlay exemption to apps with a currently visible " +
                 "overlay window, so on those phones granting the permission is no longer " +
                 "sufficient and a body resting only on the grant would be false. A visible " +
                 "Activity is an allowed start on every API level, so this is the half that is " +
                 "true everywhere - and MainActivity's resume observer is what makes it true.",
-            blocked.contains("opening nudge")
+            blocked.contains("opening hikarufocus")
         )
     }
 }

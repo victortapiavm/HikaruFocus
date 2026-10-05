@@ -132,7 +132,7 @@ fun AppDetailScreen(
 
             item {
                 InsightSection(
-                    title = "Nudge effectiveness",
+                    title = "HikaruFocus effectiveness",
                     subtitle = "${state.weekRangeLabel} · tap a bar to see that day"
                 ) {
                     BlockedTrendChart(
@@ -145,7 +145,7 @@ fun AppDetailScreen(
             }
 
             item {
-                InsightSection(title = "Nudge activity") {
+                InsightSection(title = "HikaruFocus activity") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),

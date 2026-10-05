@@ -75,10 +75,10 @@ case "$cmd" in
     case "$1 $2" in
       "pm path")
         [[ -f "$installed" ]] &&
-          printf 'package:/data/app/~~abc==/dev.astraedus.nudge-xyz==/base.apk\r\npackage:/data/app/~~abc==/dev.astraedus.nudge-xyz==/split_config.arm64_v8a.apk\r\n'
+          printf 'package:/data/app/~~abc==/dev.vtap.hikarufocus-xyz==/base.apk\r\npackage:/data/app/~~abc==/dev.vtap.hikarufocus-xyz==/split_config.arm64_v8a.apk\r\n'
         exit 0 ;;
       "pm uninstall") rm -f "$installed"; echo Success ;;
-      "pm list") [[ -f "$installed" ]] && printf 'package:dev.astraedus.nudge\r\n'; exit 0 ;;
+      "pm list") [[ -f "$installed" ]] && printf 'package:dev.vtap.hikarufocus\r\n'; exit 0 ;;
       *) : ;;
     esac ;;
   pull)
@@ -88,7 +88,7 @@ case "$cmd" in
     apk="${!#}"
     if [[ -f "$installed" && "$(key_of "$installed")" != "$(key_of "$apk")" ]]; then
       echo "Performing Streamed Install"
-      echo "adb: failed to install $apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package dev.astraedus.nudge signatures do not match previously installed version; ignoring!]"
+      echo "adb: failed to install $apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package dev.vtap.hikarufocus signatures do not match previously installed version; ignoring!]"
       exit 1
     fi
     cp "$apk" "$installed"; echo "Performing Streamed Install"; echo Success ;;
@@ -141,10 +141,10 @@ check "release DN is not debug"  bash -c ". '$ROOT/scripts/cert-guard.sh'; ! sig
 # ─── 3. pull_installed_apk (shimmed adb) ──────────────────────────────────────
 echo "pull_installed_apk:"
 export STATE ADB_LOG
-pull_rc() { local rc=0; pull_installed_apk SERIAL dev.astraedus.nudge "$TMP/pulled.apk" || rc=$?; echo "$rc"; }
+pull_rc() { local rc=0; pull_installed_apk SERIAL dev.vtap.hikarufocus "$TMP/pulled.apk" || rc=$?; echo "$rc"; }
 reset_device release
 check "installed -> 0, base.apk pulled (split + CRLF ignored)" test "$(pull_rc)" = 0
-check "pulled the base.apk path" grep -q 'pull /data/app/~~abc==/dev.astraedus.nudge-xyz==/base.apk ' "$ADB_LOG"
+check "pulled the base.apk path" grep -q 'pull /data/app/~~abc==/dev.vtap.hikarufocus-xyz==/base.apk ' "$ADB_LOG"
 reset_device none
 check "not installed -> 1" test "$(pull_rc)" = 1
 reset_device release

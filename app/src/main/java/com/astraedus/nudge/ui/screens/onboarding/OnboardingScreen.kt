@@ -198,7 +198,7 @@ private fun PermissionsPage(
         PermissionCard(
             icon = Icons.Outlined.Layers,
             title = "Display Over Other Apps",
-            description = "Shows focus overlays on top of selected app surfaces. Granting it also helps HikaruFocus restart its own protection if Android stops it in the background. Either way, opening HikaruFocus yourself brings protection back if it has stopped.",
+            description = "Shows block and focus overlays on top of selected app surfaces. Granting it also helps HikaruFocus restart its own protection if Android stops it in the background. Either way, opening HikaruFocus yourself brings protection back if it has stopped.",
             onClick = onGrantOverlay
         )
 

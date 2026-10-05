@@ -18,7 +18,7 @@ set -euo pipefail
 
 DEVICE="${DEVICE:-192.168.1.68:5555}"
 YT=com.google.android.youtube
-SVC=dev.astraedus.nudge/com.astraedus.nudge.service.NudgeAccessibilityService
+SVC=dev.vtap.hikarufocus/com.astraedus.nudge.service.NudgeAccessibilityService
 
 adb() { command adb -s "$DEVICE" "$@"; }
 home() { adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1; }

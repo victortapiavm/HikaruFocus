@@ -117,11 +117,11 @@ class InstagramSurfacesFixtureTest {
         val reels = SurfaceFixture.find(
             "home",
             InstagramSurfaces.discoveryGateTabs.getValue("REELS")
-        )!!.placement()
+        )!!.placement()!!
         val search = SurfaceFixture.find(
             "home",
             InstagramSurfaces.discoveryGateTabs.getValue("EXPLORE")
-        )!!.placement()
+        )!!.placement()!!
 
         assertEquals(432, reels.x + reels.width)
         assertEquals(648, search.x)

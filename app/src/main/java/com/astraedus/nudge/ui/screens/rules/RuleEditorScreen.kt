@@ -122,9 +122,9 @@ fun RuleEditorScreen(
                             fontWeight = FontWeight.Medium
                         )
                         InfoButton(
-                            "If multiple active rules match, Nudge uses the strongest action:\n\n" +
+                            "If multiple active rules match, HikaruFocus uses the strongest action:\n\n" +
                             "Hard Block > Delay > Breathing.\n\n" +
-                            "Whole-app rules apply when opening the app. Feature rules apply only when Nudge detects that feature, like Reels, Explore, or Shorts.\n\n" +
+                            "Whole-app rules apply when opening the app. Feature rules apply only when HikaruFocus detects that feature, like Reels, Explore, or Shorts.\n\n" +
                             "Example: Instagram can delay when opened, hard block Reels, and delay Explore."
                         )
                     }
@@ -505,7 +505,7 @@ fun RuleEditorScreen(
                         InfoButton(
                             "Choose where this rule applies.\n\n" +
                             "If no features are selected, this rule applies to the whole app when you open it.\n\n" +
-                            "If you select Reels, Explore, Shorts, or TikTok Feed, this rule only applies when Nudge detects that feature.\n\n" +
+                            "If you select Reels, Explore, Shorts, or TikTok Feed, this rule only applies when HikaruFocus detects that feature.\n\n" +
                             "The action still comes from Block Mode above. For example, select Explore + Delay to add a 15 second delay only when opening Explore."
                         )
                     }

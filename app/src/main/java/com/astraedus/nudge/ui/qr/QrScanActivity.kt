@@ -231,7 +231,7 @@ class QrScanActivity : ComponentActivity() {
         try {
             startActivity(intent)
         } catch (e: ActivityNotFoundException) {
-            Toast.makeText(this, "Open Settings > Apps > Nudge > Permissions", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Open Settings > Apps > HikaruFocus > Permissions", Toast.LENGTH_LONG).show()
         }
     }
 }

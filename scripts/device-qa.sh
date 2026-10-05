@@ -84,7 +84,7 @@ set -uo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_ID="dev.astraedus.nudge"
+APP_ID="dev.vtap.hikarufocus"
 NAMESPACE="com.astraedus.nudge"
 A11Y_COMPONENT="${APP_ID}/${NAMESPACE}.service.NudgeAccessibilityService"
 WATCHDOG_RECEIVER="${APP_ID}/${NAMESPACE}.service.WatchdogDebugReceiver"
@@ -110,7 +110,7 @@ LIMIT_WAIT_SECS="${LIMIT_WAIT_SECS:-45}"
 # left plus one 30-second clock tick; this only stops a mis-derived limit from parking the run.
 MIDSESSION_WAIT_SECS="${MIDSESSION_WAIT_SECS:-240}"
 MAESTRO_BIN="${MAESTRO_BIN:-${HOME}/.maestro/bin/maestro}"
-GH_REPO="${GH_REPO:-astraedus/nudge}"
+GH_REPO="${GH_REPO:-victortapiavm/HikaruFocus}"
 
 RUN_TS="$(date +%Y%m%d-%H%M%S)"
 ALBUM="${HOME}/Pictures/screenshots/nudge/qa-${RUN_TS}"

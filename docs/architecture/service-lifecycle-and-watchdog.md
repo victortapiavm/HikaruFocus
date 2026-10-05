@@ -400,18 +400,18 @@ cost in the same honest shape, gated by `OverlayPermissionCopyTest`.
 ### Reproducing it on the bench
 
 ```bash
-adb shell appops set dev.astraedus.nudge SYSTEM_ALERT_WINDOW deny
-adb shell am force-stop dev.astraedus.nudge
-adb shell am broadcast -a dev.astraedus.nudge.debug.RUN_WATCHDOG \
-  -n dev.astraedus.nudge/com.astraedus.nudge.service.WatchdogDebugReceiver --ez reset true
+adb shell appops set dev.vtap.hikarufocus SYSTEM_ALERT_WINDOW deny
+adb shell am force-stop dev.vtap.hikarufocus
+adb shell am broadcast -a dev.vtap.hikarufocus.debug.RUN_WATCHDOG \
+  -n dev.vtap.hikarufocus/com.astraedus.nudge.service.WatchdogDebugReceiver --ez reset true
 # first: startService=true, reported=none, "(service start REFUSED by platform)"
-adb shell am broadcast -a dev.astraedus.nudge.debug.RUN_WATCHDOG \
-  -n dev.astraedus.nudge/com.astraedus.nudge.service.WatchdogDebugReceiver
+adb shell am broadcast -a dev.vtap.hikarufocus.debug.RUN_WATCHDOG \
+  -n dev.vtap.hikarufocus/com.astraedus.nudge.service.WatchdogDebugReceiver
 # second: reported=MONITOR_START_BLOCKED, and a notification on nudge_protection_alerts
 ```
 
-Then open Nudge: the resume retry starts the service, and
-`adb shell dumpsys activity services dev.astraedus.nudge | grep NudgeMonitorService` shows it
+Then open HikaruFocus: the resume retry starts the service, and
+`adb shell dumpsys activity services dev.vtap.hikarufocus | grep NudgeMonitorService` shows it
 running again. Restore with `appops set ... allow`.
 
 **That recipe does not work as written on the bench Pixel 3 (API 31), measured 2026-09-29** while

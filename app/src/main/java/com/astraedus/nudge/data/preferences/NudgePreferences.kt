@@ -124,30 +124,22 @@ class NudgePreferences @Inject constructor(
         }
 
     /**
-     * Atomically add Reel-player foreground time to [todayStartMs].
+     * Persist an already-accumulated ABSOLUTE state.
      *
-     * A write for an OLDER local day is ignored. That can happen if a periodic checkpoint was
-     * already queued when midnight rolled over and a new-day checkpoint won the DataStore race.
-     * Letting the stale write land would resurrect yesterday's exhausted budget after midnight.
+     * Same-day writes are monotonic (`max`), so periodic checkpoints, exit checkpoints and teardown
+     * may race without double-counting. A write for an older local day is ignored, so a coroutine
+     * queued before midnight cannot resurrect yesterday's exhausted budget after the new day starts.
      */
-    suspend fun recordInstagramReelUsage(
-        todayStartMs: Long,
-        deltaMs: Long
-    ): InstagramDiscoveryBudgetState {
-        var result = InstagramDiscoveryBudget.EMPTY
+    suspend fun persistInstagramDiscoveryBudgetState(state: InstagramDiscoveryBudgetState) {
         context.dataStore.edit { prefs ->
             val stored = InstagramDiscoveryBudgetState(
                 dayStartMs = prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] ?: 0L,
                 usedMs = prefs[Keys.INSTAGRAM_REEL_USED_MS] ?: 0L
             )
-            result = when {
-                stored.dayStartMs > todayStartMs -> stored
-                else -> InstagramDiscoveryBudget.addUsage(stored, todayStartMs, deltaMs)
-            }
-            prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] = result.dayStartMs
-            prefs[Keys.INSTAGRAM_REEL_USED_MS] = result.usedMs
+            val merged = InstagramDiscoveryBudget.mergePersisted(stored, state)
+            prefs[Keys.INSTAGRAM_REEL_DAY_START_MS] = merged.dayStartMs
+            prefs[Keys.INSTAGRAM_REEL_USED_MS] = merged.usedMs
         }
-        return result
     }
 
     /** Generic "Content Filter" master switch. Opt-in: defaults to false. */

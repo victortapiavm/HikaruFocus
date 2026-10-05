@@ -55,6 +55,20 @@ object InstagramDiscoveryBudget {
         state: InstagramDiscoveryBudgetState,
         todayStartMs: Long
     ): Boolean = normalize(state, todayStartMs).usedMs >= DAILY_LIMIT_MS
+
+    /**
+     * Merge two absolute persisted snapshots without ever moving a day or its usage backwards.
+     * Newer local day wins; same day keeps the larger usage value. This makes async checkpoints and
+     * teardown flushes idempotent even when their writes complete out of order.
+     */
+    fun mergePersisted(
+        stored: InstagramDiscoveryBudgetState,
+        candidate: InstagramDiscoveryBudgetState
+    ): InstagramDiscoveryBudgetState = when {
+        stored.dayStartMs > candidate.dayStartMs -> stored
+        candidate.dayStartMs > stored.dayStartMs -> candidate.copy(usedMs = candidate.usedMs.coerceAtLeast(0L))
+        else -> candidate.copy(usedMs = maxOf(stored.usedMs, candidate.usedMs, 0L))
+    }
 }
 
 /** Pure policy for what the exhausted budget is allowed to do. */

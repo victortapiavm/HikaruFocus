@@ -69,6 +69,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class NudgeAccessibilityService : AccessibilityService() {
@@ -226,6 +227,7 @@ class NudgeAccessibilityService : AccessibilityService() {
     private val instagramBudgetTimeTracker = TimeTracker()
     private val instagramBudgetLock = Any()
     private var instagramBudgetState: InstagramDiscoveryBudgetState = InstagramDiscoveryBudget.EMPTY
+    private var instagramBudgetHydrated: Boolean = false
     private var instagramReelCheckpointElapsedMs: Long? = null
     private var instagramReelCheckpointWallMs: Long? = null
     private lateinit var instagramReelClock: ForegroundClock
@@ -274,6 +276,13 @@ class NudgeAccessibilityService : AccessibilityService() {
         /** Periodic persistence while passively watching Reels; exit checkpoints are immediate. */
         private const val INSTAGRAM_REEL_BUDGET_TICK_MS = 30_000L
         private const val INSTAGRAM_REEL_CLOCK_KEY = "instagram:reel-player"
+
+        /**
+         * Once discovery is locked, Explore is an enforcement surface rather than a generic feature
+         * detector. A 2s debounce left enough time to swipe into Explore and tap a Reel before the
+         * backstop ran; 150ms keeps the tree-read cost bounded while closing that interaction race.
+         */
+        private const val INSTAGRAM_DISCOVERY_DEBOUNCE_MS = 150L
 
         /** Upper bound on nodes scanned when harvesting Settings window text (bounded traversal). */
         private const val MAX_NODES_SCANNED = 800
@@ -917,24 +926,6 @@ class NudgeAccessibilityService : AccessibilityService() {
             entryPoint.nudgeLogger()
         ).also { it.setServiceContext(this) }
 
-        // Warm the device-local Reel budget before the first Instagram visit. If an accessibility
-        // event beats this read, enforcement still consults DataStore directly; this cache only
-        // exists so periodic checkpoints can update the lock state without re-reading first.
-        serviceScope.launch {
-            val todayStart = instagramBudgetTimeTracker.startOfToday()
-            val persisted = InstagramDiscoveryBudget.normalize(
-                entryPoint.nudgePreferences().instagramDiscoveryBudgetState.first(),
-                todayStart
-            )
-            synchronized(instagramBudgetLock) {
-                val cached = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart)
-                instagramBudgetState = InstagramDiscoveryBudgetState(
-                    dayStartMs = todayStart,
-                    usedMs = maxOf(cached.usedMs, persisted.usedMs)
-                )
-            }
-        }
-
         val passthrough = entryPoint.passthroughManager()
         passthroughManagerInstance = passthrough
 
@@ -1021,11 +1012,16 @@ class NudgeAccessibilityService : AccessibilityService() {
             logger = entryPoint.nudgeLogger(),
             label = "instagram-reel"
         )
+        // Hydrate FIRST, then inspect the live root. An accessibility event can beat this coroutine;
+        // pre-hydration Reel deltas are held in memory and added to the stored baseline by
+        // hydrateInstagramBudgetIfNeeded(), never max-merged away.
+        //
         // A service/process rebind may happen while Instagram is already sitting in a Reel player,
-        // with no fresh navigation event guaranteed. Inspect the live root once so accounting resumes
-        // without blocking or navigating anywhere.
+        // with no fresh navigation event guaranteed. The one live-root read resumes accounting and
+        // restores both discovery-door covers/backstops without blocking a Reel already on screen.
         serviceScope.launch {
-            withContext(Dispatchers.Main) { observeInstagramReelPlayerFromActiveWindow() }
+            hydrateInstagramBudgetIfNeeded()
+            withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
         }
         webClock = ForegroundClock(
             scope = serviceScope,
@@ -1436,7 +1432,7 @@ class NudgeAccessibilityService : AccessibilityService() {
                     )
                     lastEvalTime = 0L
                 }
-                observeInstagramReelPlayerFromActiveWindow(packageName)
+                observeInstagramActiveWindow(packageName)
                 evaluateForegroundPackage(packageName)
             }
 
@@ -2331,7 +2327,14 @@ class NudgeAccessibilityService : AccessibilityService() {
         if (isNukedNow(packageName)) return
         val now = System.currentTimeMillis()
         val lastTime = lastContentChangedTime[packageName] ?: 0L
-        if ((now - lastTime) < contentChangedDebounceMs) return
+        val debounceMs = if (
+            packageName == InstagramSurfaces.packageName && isInstagramDiscoveryLockedCached()
+        ) {
+            INSTAGRAM_DISCOVERY_DEBOUNCE_MS
+        } else {
+            contentChangedDebounceMs
+        }
+        if ((now - lastTime) < debounceMs) return
         lastContentChangedTime[packageName] = now
 
         val rootNode = try { rootInActiveWindow } catch (_: Exception) { null } ?: return
@@ -2372,13 +2375,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         // Search/Explore is a discovery door, not a social arrival route. After the Reel budget is
         // spent the visible tab is already covered; this is the backstop for Instagram's swipe path
         // into Explore. Reels deliberately have NO equivalent ejection path.
-        if (packageName == InstagramSurfaces.packageName && feature == InAppDetector.Feature.EXPLORE) {
-            serviceScope.launch {
-                if (InstagramDiscoveryPolicy.shouldReturnHome(feature.key, isInstagramDiscoveryLocked())) {
-                    navigateInstagramHomeFromExplore()
-                }
-            }
-        }
+        if (packageName == InstagramSurfaces.packageName) maybeApplyInstagramExploreBackstop(feature)
 
         val passthrough = entryPoint.passthroughManager()
 
@@ -2732,12 +2729,42 @@ class NudgeAccessibilityService : AccessibilityService() {
      * disappeared. [expectedPackage] prevents a stale root from starting the clock for an event
      * whose foreground claim has already moved elsewhere.
      */
-    private fun observeInstagramReelPlayerFromActiveWindow(expectedPackage: String? = null) {
+    private fun observeInstagramActiveWindow(expectedPackage: String? = null) {
         val root = try { rootInActiveWindow } catch (_: Exception) { null } ?: return
         val rootPackage = try { root.packageName?.toString() } catch (_: Exception) { null } ?: return
         if (expectedPackage != null && rootPackage != expectedPackage) return
         if (rootPackage != InstagramSurfaces.packageName) return
-        observeInstagramReelPlayer(entryPoint.inAppDetector().isInstagramReelPlayer(root))
+        val detector = entryPoint.inAppDetector()
+        observeInstagramReelPlayer(detector.isInstagramReelPlayer(root))
+        maintainHostSurfaces(InstagramSurfaces.packageName, root)
+        maybeApplyInstagramExploreBackstop(detector.detectFeature(InstagramSurfaces.packageName, root))
+    }
+
+    /**
+     * Load today's persisted baseline exactly once. Reel time observed before this read completes is
+     * pending usage for this service instance, so it is ADDED to the stored baseline rather than
+     * max-merged away.
+     */
+    private suspend fun hydrateInstagramBudgetIfNeeded() {
+        if (synchronized(instagramBudgetLock) { instagramBudgetHydrated }) return
+
+        val todayStart = instagramBudgetTimeTracker.startOfToday()
+        val persisted = InstagramDiscoveryBudget.normalize(
+            entryPoint.nudgePreferences().instagramDiscoveryBudgetState.first(),
+            todayStart
+        )
+
+        val mergedToPersist = synchronized(instagramBudgetLock) {
+            if (instagramBudgetHydrated) return@synchronized null
+            val pending = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).usedMs
+            instagramBudgetState = InstagramDiscoveryBudget.addUsage(persisted, todayStart, pending)
+            instagramBudgetHydrated = true
+            instagramBudgetState.takeIf { pending > 0L }
+        }
+
+        mergedToPersist?.let {
+            entryPoint.nudgePreferences().persistInstagramDiscoveryBudgetState(it)
+        }
     }
 
     /**
@@ -2779,7 +2806,8 @@ class NudgeAccessibilityService : AccessibilityService() {
                 dayStartMs = todayStart,
                 deltaMs = creditedMs,
                 usedMs = instagramBudgetState.usedMs,
-                becameLocked = !beforeLocked && afterLocked
+                becameLocked = !beforeLocked && afterLocked,
+                persistNow = instagramBudgetHydrated
             )
         }
 
@@ -2794,19 +2822,14 @@ class NudgeAccessibilityService : AccessibilityService() {
             )
         }
 
-        serviceScope.launch {
-            val persisted = entryPoint.nudgePreferences().recordInstagramReelUsage(
-                checkpoint.dayStartMs,
-                checkpoint.deltaMs
-            )
-            synchronized(instagramBudgetLock) {
-                val current = InstagramDiscoveryBudget.normalize(
-                    instagramBudgetState,
-                    checkpoint.dayStartMs
+        if (checkpoint.persistNow) {
+            serviceScope.launch {
+                entryPoint.nudgePreferences().persistInstagramDiscoveryBudgetState(
+                    InstagramDiscoveryBudgetState(
+                        dayStartMs = checkpoint.dayStartMs,
+                        usedMs = checkpoint.usedMs
+                    )
                 )
-                if (persisted.dayStartMs == checkpoint.dayStartMs && persisted.usedMs > current.usedMs) {
-                    instagramBudgetState = persisted
-                }
             }
         }
     }
@@ -2825,25 +2848,38 @@ class NudgeAccessibilityService : AccessibilityService() {
         entryPoint.nudgeLogger().i("instagram reel budget session stopped reason=$reason")
     }
 
-    /**
-     * Source-of-truth read for an enforcement decision. Merge persisted + in-memory usage so a
-     * just-checkpointed delta is visible before DataStore's async write completes, while a process
-     * restart still recovers the persisted answer before the warm-up coroutine has run.
-     */
+    /** Source-of-truth read for an enforcement decision. */
     private suspend fun isInstagramDiscoveryLocked(): Boolean {
+        hydrateInstagramBudgetIfNeeded()
         val todayStart = instagramBudgetTimeTracker.startOfToday()
-        val persisted = InstagramDiscoveryBudget.normalize(
-            entryPoint.nudgePreferences().instagramDiscoveryBudgetState.first(),
-            todayStart
-        )
-        val merged = synchronized(instagramBudgetLock) {
-            val cached = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart)
-            InstagramDiscoveryBudgetState(
-                dayStartMs = todayStart,
-                usedMs = maxOf(cached.usedMs, persisted.usedMs)
-            ).also { instagramBudgetState = it }
+        val current = synchronized(instagramBudgetLock) {
+            InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).also {
+                instagramBudgetState = it
+            }
         }
-        return InstagramDiscoveryBudget.isLocked(merged, todayStart)
+        return InstagramDiscoveryBudget.isLocked(current, todayStart)
+    }
+
+    /** Cheap synchronous answer used only to choose the post-budget detection cadence. */
+    private fun isInstagramDiscoveryLockedCached(): Boolean {
+        val todayStart = instagramBudgetTimeTracker.startOfToday()
+        return synchronized(instagramBudgetLock) {
+            if (!instagramBudgetHydrated) return@synchronized false
+            val current = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart)
+            instagramBudgetState = current
+            InstagramDiscoveryBudget.isLocked(current, todayStart)
+        }
+    }
+
+    /** Explore is the only surface the specialized policy ejects. Reels never enter this path. */
+    private fun maybeApplyInstagramExploreBackstop(feature: InAppDetector.Feature?) {
+        if (feature != InAppDetector.Feature.EXPLORE) return
+        serviceScope.launch {
+            if (!entryPoint.nudgePreferences().isGlobalEnabled.first()) return@launch
+            if (InstagramDiscoveryPolicy.shouldReturnHome(feature.key, isInstagramDiscoveryLocked())) {
+                navigateInstagramHomeFromExplore()
+            }
+        }
     }
 
     /**
@@ -2853,6 +2889,8 @@ class NudgeAccessibilityService : AccessibilityService() {
      */
     private suspend fun navigateInstagramHomeFromExplore() = withContext(Dispatchers.Main) {
         val root = try { rootInActiveWindow } catch (_: Exception) { null } ?: return@withContext
+        val rootPackage = try { root.packageName?.toString() } catch (_: Exception) { null }
+        if (rootPackage != InstagramSurfaces.packageName) return@withContext
         val feature = entryPoint.inAppDetector().detectFeature(InstagramSurfaces.packageName, root)
         if (feature != InAppDetector.Feature.EXPLORE) return@withContext
 
@@ -2872,7 +2910,8 @@ class NudgeAccessibilityService : AccessibilityService() {
         val dayStartMs: Long,
         val deltaMs: Long,
         val usedMs: Long,
-        val becameLocked: Boolean
+        val becameLocked: Boolean,
+        val persistNow: Boolean
     )
 
     /**
@@ -3389,6 +3428,22 @@ class NudgeAccessibilityService : AccessibilityService() {
             if (grayscaleActiveForPackage != null) {
                 entryPoint.grayscaleManager().disableGrayscale()
                 grayscaleActiveForPackage = null
+            }
+        }
+        // `stopInstagramReelBudgetSession` above updates the in-memory absolute state and normally
+        // persists its final delta on serviceScope. Flush the absolute state synchronously BEFORE
+        // cancelling that scope so teardown preserves the last <=30-second tail while keeping the
+        // service's long-standing invariant that serviceScope.cancel() is the final teardown step.
+        teardown.step("flush_instagram_reel_budget") {
+            runBlocking(Dispatchers.IO) {
+                hydrateInstagramBudgetIfNeeded()
+                val todayStart = instagramBudgetTimeTracker.startOfToday()
+                val state = synchronized(instagramBudgetLock) {
+                    InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).also {
+                        instagramBudgetState = it
+                    }
+                }
+                entryPoint.nudgePreferences().persistInstagramDiscoveryBudgetState(state)
             }
         }
         teardown.step("cancel_scope") { serviceScope.cancel() }

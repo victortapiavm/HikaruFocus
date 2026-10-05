@@ -19,19 +19,19 @@ data class ServiceHealthCopy(val title: String, val body: String)
  */
 fun ServiceHealth.notificationCopy(): ServiceHealthCopy = when (this) {
     ServiceHealth.DISABLED -> ServiceHealthCopy(
-        title = "Nudge is off",
+        title = "HikaruFocus is off",
         body = "Blocking is turned off"
     )
     ServiceHealth.PERMISSION_MISSING -> ServiceHealthCopy(
-        title = "Nudge is not blocking",
+        title = "HikaruFocus is not blocking",
         body = "Accessibility access is off. Tap to turn it on."
     )
     ServiceHealth.STOPPED_BY_SYSTEM -> ServiceHealthCopy(
-        title = "Nudge is not blocking",
-        body = "Your phone stopped Nudge. Tap to turn accessibility off and on again."
+        title = "HikaruFocus is not blocking",
+        body = "Your phone stopped HikaruFocus. Tap to turn accessibility off and on again."
     )
     ServiceHealth.ACTIVE -> ServiceHealthCopy(
-        title = "Nudge is active",
+        title = "HikaruFocus is active",
         body = "Blocking is on"
     )
 }

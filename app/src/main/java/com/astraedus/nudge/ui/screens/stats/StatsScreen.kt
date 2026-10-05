@@ -198,7 +198,7 @@ fun StatsScreen(
 
             item {
                 InsightSection(
-                    title = "Nudge effectiveness",
+                    title = "HikaruFocus effectiveness",
                     subtitle = "${state.weekRangeLabel} · tap a bar to see that day"
                 ) {
                     BlockedTrendChart(

@@ -675,7 +675,7 @@ fun UnifiedAppConfigScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Hide the $vanishLabel tab", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "While $vanishLabel is blocked, Nudge covers the $vanishLabel tab in " +
+                                "While $vanishLabel is blocked, HikaruFocus covers the $vanishLabel tab in " +
                                     "Instagram's bottom bar, so the icon is not there and tapping it does " +
                                     "nothing. The rest of Instagram works as normal.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -703,7 +703,7 @@ fun UnifiedAppConfigScreen(
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                "Experimental. When you open Instagram's home feed, Nudge switches it to " +
+                                "Experimental. When you open Instagram's home feed, HikaruFocus switches it to " +
                                     "Following, so you see posts from people you follow rather than " +
                                     "suggested ones. You can switch back at any time. If Instagram changes " +
                                     "its layout this quietly stops working.",

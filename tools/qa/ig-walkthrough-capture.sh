@@ -39,13 +39,13 @@
 set -euo pipefail
 
 DEVICE="${ADB_SERIAL:-192.168.1.68:5555}"
-PKG="dev.astraedus.nudge"
+PKG="dev.vtap.hikarufocus"
 OUT_DIR="/home/astraedus/Pictures/screenshots"
 mkdir -p "$OUT_DIR"
 
 adbs() { adb -s "$DEVICE" "$@"; }
 
-echo "== Nudge IG-detection walkthrough capture =="
+echo "== HikaruFocus IG-detection walkthrough capture =="
 echo "Device: $DEVICE"
 echo
 

@@ -79,4 +79,28 @@ class InstagramDiscoveryBudgetTest {
         assertTrue(InstagramDiscoveryPolicy.shouldReturnHome(InstagramDiscoveryPolicy.EXPLORE, locked = true))
         assertFalse(InstagramDiscoveryPolicy.shouldReturnHome(InstagramDiscoveryPolicy.EXPLORE, locked = false))
     }
+
+    @Test
+    fun `absolute checkpoint merge is monotonic within a day`() {
+        val newerStored = InstagramDiscoveryBudgetState(today, 90_000L)
+        val staleCheckpoint = InstagramDiscoveryBudgetState(today, 60_000L)
+
+        assertEquals(
+            newerStored,
+            InstagramDiscoveryBudget.mergePersisted(newerStored, staleCheckpoint)
+        )
+        assertEquals(
+            newerStored,
+            InstagramDiscoveryBudget.mergePersisted(staleCheckpoint, newerStored)
+        )
+    }
+
+    @Test
+    fun `an older day can never overwrite the new day`() {
+        val tomorrow = today + 86_400_000L
+        val newDay = InstagramDiscoveryBudgetState(tomorrow, 5_000L)
+        val staleYesterday = InstagramDiscoveryBudgetState(today, InstagramDiscoveryBudget.DAILY_LIMIT_MS)
+
+        assertEquals(newDay, InstagramDiscoveryBudget.mergePersisted(newDay, staleYesterday))
+    }
 }

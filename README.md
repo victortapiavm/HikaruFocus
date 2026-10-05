@@ -110,15 +110,15 @@ Uses Accessibility Service to detect in-app navigation to these screens.
 
 ## Install
 
-**Android:** Nudge is on the [Google Play Store](https://play.google.com/store/apps/details?id=dev.astraedus.nudge&hl=en_AU). No account, no sign-in, no internet permission.
+**Android:** HikaruFocus is currently a sideload/development build. No account, no sign-in, no internet permission.
 
 ### Download APK
-Prefer installing outside Play? Download the latest APK from [**Releases**](https://github.com/astraedus/nudge/releases) and sideload it.
+When tagged builds are published, download the latest HikaruFocus APK from [**Releases**](https://github.com/victortapiavm/HikaruFocus/releases) and sideload it.
 
 ### Build from source
 ```bash
-git clone https://github.com/astraedus/nudge.git
-cd nudge
+git clone https://github.com/victortapiavm/HikaruFocus.git
+cd HikaruFocus
 export ANDROID_HOME=$HOME/Android/Sdk  # or your SDK path
 ./gradlew assembleDebug
 # APK at app/build/outputs/apk/debug/app-debug.apk

@@ -20,7 +20,7 @@
 #     coordinates are banned here). The importer is a real user-facing path, it takes
 #     the exact field values the cases need (delaySeconds=5, dailyLimitMinutes=1),
 #     and duplicate rules are skipped — so this is idempotent.
-appId: dev.astraedus.nudge
+appId: dev.vtap.hikarufocus
 ---
 # ─── Onboarding: three pages, Next / Next / Get Started ───────────────────────
 - launchApp:
@@ -112,11 +112,11 @@ appId: dev.astraedus.nudge
 # "Not blocked · 1min limit". Asserting those strings checks the VALUES the later cases
 # depend on, not merely that an import dialog said success.
 - pressKey: Back
-# "Nudge" is the Home top-bar title, so it is the right anchor here: Compose Navigation
+# "HikaruFocus" is the Home top-bar title, so it is the right anchor here: Compose Navigation
 # restores Home's SCROLL POSITION, and we scrolled down to reach Settings — anything
 # further up the dashboard (e.g. "Screen Time") is legitimately off-screen on return.
 - extendedWaitUntil:
-    visible: "Nudge"
+    visible: "HikaruFocus"
     timeout: 15000
 - scrollUntilVisible:
     element:

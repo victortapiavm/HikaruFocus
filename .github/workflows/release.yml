@@ -1,25 +1,13 @@
-name: Release
+name: Upstream release pipeline (manual only)
 
 # RELEASE CONVENTION (updated 2026-07-05): push to main -> rolling 'main-latest' dev-build
 # prerelease (an installable signed APK per merge to main, tests gated); 'v*' tag -> versioned
 # production release; workflow_dispatch -> one-off manual build (run artifact, no release).
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-    # The Chrome extension lives in extension/ and has its own pipeline
-    # (.github/workflows/extension-ci.yml), so a commit that only touches it must not
-    # spend a runner rebuilding the Android app.
-    #
-    # SAFE FOR THE v* RELEASE FLOW: GitHub does not evaluate path filters for TAG
-    # pushes, so `v*` tags still trigger this workflow regardless of what changed.
-    # (And even if that behaviour ever changed, a release tag is always cut on an
-    # Android version bump, which is never an extension-only diff.)
-    paths-ignore:
-      - 'extension/**'
+  # HikaruFocus is a sideload/development fork. Keep the inherited release machinery available for
+  # reference, but never run it automatically: its signing and Play assumptions belong to upstream
+  # Nudge and this fork intentionally uses a different application id.
   workflow_dispatch:
 
 jobs:

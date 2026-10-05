@@ -282,7 +282,7 @@ private fun PermissionPanel(
         PanelIcon(if (blocked) Icons.Outlined.NoPhotography else Icons.Outlined.PhotoCamera)
         Spacer(Modifier.height(20.dp))
         Text(
-            text = if (blocked) "Camera access is off" else "Nudge needs the camera to scan",
+            text = if (blocked) "Camera access is off" else "HikaruFocus needs the camera to scan",
             style = MaterialTheme.typography.titleLarge,
             color = ON_CAMERA,
             textAlign = TextAlign.Center
@@ -290,7 +290,7 @@ private fun PermissionPanel(
         Spacer(Modifier.height(8.dp))
         Text(
             text = if (blocked) {
-                "Android won't ask again. Allow Camera for Nudge in Settings, then come back here."
+                "Android won't ask again. Allow Camera for HikaruFocus in Settings, then come back here."
             } else {
                 "It's used only to read the code. Nothing is photographed, saved or sent anywhere."
             },
