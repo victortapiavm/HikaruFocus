@@ -468,5 +468,13 @@ class ServiceLifecycleContractTest {
                 "observation on rebind (limitReady=$limitReady enabledRead=$enabledRead observe=$observe)",
             enabledRead > limitReady && observe > enabledRead
         )
+
+        val observer = text.substringAfter("private fun observeInstagramActiveWindow(")
+            .substringBefore("private suspend fun hydrateInstagramBudgetIfNeeded()")
+        assertTrue(
+            "the live-root observer itself must re-check the cached master toggle on Main so a " +
+                "disable racing after isGlobalEnabled.first() cannot restart Reel accounting",
+            observer.contains("if (!globalEnabledCached) return")
+        )
     }
 }

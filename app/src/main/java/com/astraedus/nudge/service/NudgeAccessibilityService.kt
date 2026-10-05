@@ -2759,6 +2759,7 @@ class NudgeAccessibilityService : AccessibilityService() {
      * whose foreground claim has already moved elsewhere.
      */
     private fun observeInstagramActiveWindow(expectedPackage: String? = null) {
+        if (!globalEnabledCached) return
         val root = try { rootInActiveWindow } catch (_: Exception) { null } ?: return
         val rootPackage = try { root.packageName?.toString() } catch (_: Exception) { null } ?: return
         if (expectedPackage != null && rootPackage != expectedPackage) return
