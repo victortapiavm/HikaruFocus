@@ -62,6 +62,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -229,6 +230,7 @@ class NudgeAccessibilityService : AccessibilityService() {
     private var instagramBudgetState: InstagramDiscoveryBudgetState = InstagramDiscoveryBudget.EMPTY
     private var instagramBudgetHydrated: Boolean = false
     private var instagramDiscoveryLimitMinutesCached: Int = InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES
+    private val instagramDiscoveryLimitReady = CompletableDeferred<Unit>()
     private var instagramReelCheckpointElapsedMs: Long? = null
     private var instagramReelCheckpointWallMs: Long? = null
     private lateinit var instagramReelClock: ForegroundClock
@@ -1026,6 +1028,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         // service rebind race.
         serviceScope.launch {
             hydrateInstagramBudgetIfNeeded()
+            instagramDiscoveryLimitReady.await()
             if (entryPoint.nudgePreferences().isGlobalEnabled.first()) {
                 withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
             }
@@ -1099,12 +1102,19 @@ class NudgeAccessibilityService : AccessibilityService() {
         }
         serviceScope.launch {
             entryPoint.nudgePreferences().instagramDiscoveryBudgetMinutes.collect { minutes ->
-                val changed = synchronized(instagramBudgetLock) {
+                val (wasReady, changed) = synchronized(instagramBudgetLock) {
+                    val wasReady = instagramDiscoveryLimitReady.isCompleted
                     val changed = instagramDiscoveryLimitMinutesCached != minutes
                     instagramDiscoveryLimitMinutesCached = minutes
-                    changed
+                    wasReady to changed
                 }
-                if (changed && globalEnabledCached && synchronized(instagramBudgetLock) { instagramBudgetHydrated }) {
+                instagramDiscoveryLimitReady.complete(Unit)
+                if (
+                    wasReady &&
+                    changed &&
+                    synchronized(instagramBudgetLock) { instagramBudgetHydrated } &&
+                    entryPoint.nudgePreferences().isGlobalEnabled.first()
+                ) {
                     withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
                 }
             }
@@ -2768,18 +2778,15 @@ class NudgeAccessibilityService : AccessibilityService() {
         if (synchronized(instagramBudgetLock) { instagramBudgetHydrated }) return
 
         val todayStart = instagramBudgetTimeTracker.startOfToday()
-        val preferences = entryPoint.nudgePreferences()
         val persisted = InstagramDiscoveryBudget.normalize(
-            preferences.instagramDiscoveryBudgetState.first(),
+            entryPoint.nudgePreferences().instagramDiscoveryBudgetState.first(),
             todayStart
         )
-        val configuredLimitMinutes = preferences.instagramDiscoveryBudgetMinutes.first()
 
         val mergedToPersist = synchronized(instagramBudgetLock) {
             if (instagramBudgetHydrated) return@synchronized null
             val pending = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).usedMs
             instagramBudgetState = InstagramDiscoveryBudget.addUsage(persisted, todayStart, pending)
-            instagramDiscoveryLimitMinutesCached = configuredLimitMinutes
             instagramBudgetHydrated = true
             instagramBudgetState.takeIf { pending > 0L }
         }
@@ -2883,6 +2890,7 @@ class NudgeAccessibilityService : AccessibilityService() {
     /** Source-of-truth read for an enforcement decision. */
     private suspend fun isInstagramDiscoveryLocked(): Boolean {
         hydrateInstagramBudgetIfNeeded()
+        instagramDiscoveryLimitReady.await()
         val todayStart = instagramBudgetTimeTracker.startOfToday()
         val current = synchronized(instagramBudgetLock) {
             InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart).also {
@@ -2897,7 +2905,9 @@ class NudgeAccessibilityService : AccessibilityService() {
     private fun isInstagramDiscoveryLockedCached(): Boolean {
         val todayStart = instagramBudgetTimeTracker.startOfToday()
         return synchronized(instagramBudgetLock) {
-            if (!instagramBudgetHydrated) return@synchronized false
+            if (!instagramBudgetHydrated || !instagramDiscoveryLimitReady.isCompleted) {
+                return@synchronized false
+            }
             val current = InstagramDiscoveryBudget.normalize(instagramBudgetState, todayStart)
             instagramBudgetState = current
             InstagramDiscoveryBudget.isLocked(

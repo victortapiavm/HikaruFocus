@@ -449,19 +449,24 @@ class ServiceLifecycleContractTest {
         val connected = text.substringAfter("override fun onServiceConnected()")
             .substringBefore("override fun onAccessibilityEvent(")
         val hydrate = connected.indexOf("hydrateInstagramBudgetIfNeeded()")
+        val limitReady = connected.indexOf("instagramDiscoveryLimitReady.await()", startIndex = hydrate.coerceAtLeast(0))
         val enabledRead = connected.indexOf("isGlobalEnabled.first()", startIndex = hydrate.coerceAtLeast(0))
         val observe = connected.indexOf("observeInstagramActiveWindow()", startIndex = hydrate.coerceAtLeast(0))
 
         assertTrue("rebind must hydrate the persisted Instagram budget", hydrate >= 0)
+        assertTrue(
+            "rebind must wait for the persisted configurable Reel limit before observing Instagram",
+            limitReady > hydrate
+        )
         assertTrue(
             "the Reel rebind probe must read the persisted master toggle instead of the optimistic " +
                 "globalEnabledCached default, or a disabled HikaruFocus can spend Reel budget",
             enabledRead >= 0
         )
         assertTrue(
-            "the master-toggle read must guard the live Instagram observation on rebind " +
-                "(enabledRead=$enabledRead observe=$observe)",
-            observe > enabledRead
+            "the configurable limit and master-toggle reads must both guard the live Instagram " +
+                "observation on rebind (limitReady=$limitReady enabledRead=$enabledRead observe=$observe)",
+            enabledRead > limitReady && observe > enabledRead
         )
     }
 }
