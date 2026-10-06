@@ -73,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import com.astraedus.nudge.BuildConfig
 import com.astraedus.nudge.R
 import com.astraedus.nudge.data.preferences.NudgePreferences
+import com.astraedus.nudge.domain.engine.TimeTracker
 import com.astraedus.nudge.domain.focus.InstagramDiscoveryBudget
 import com.astraedus.nudge.domain.lock.LockedToggle
 import com.astraedus.nudge.domain.lock.SettingsWeakening
@@ -120,6 +121,14 @@ fun SettingsScreen(
     val instagramDiscoveryBudgetMinutes by preferences.instagramDiscoveryBudgetMinutes.collectAsStateWithLifecycle(
         initialValue = InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES
     )
+    val instagramDiscoveryBudgetState by preferences.instagramDiscoveryBudgetState.collectAsStateWithLifecycle(
+        initialValue = InstagramDiscoveryBudget.EMPTY
+    )
+    val timeTracker = remember { TimeTracker() }
+    val instagramDiscoveryUsedToday = InstagramDiscoveryBudget.normalize(
+        instagramDiscoveryBudgetState,
+        timeTracker.startOfToday()
+    ).usedMs
     val strictModeEnabled by preferences.isStrictModeEnabled.collectAsStateWithLifecycle(initialValue = false)
     val strictModeLength by preferences.strictModeChallengeLength.collectAsStateWithLifecycle(
         initialValue = StrictModeChallenge.DEFAULT_LENGTH
@@ -283,7 +292,9 @@ fun SettingsScreen(
                 supportingContent = {
                     Text(
                         "After this much Reel-player time today, Reels and Search/Explore are closed. " +
-                            "Reels opened from DMs, links or profiles still work."
+                            "Reels opened from DMs, links or profiles still work.\n" +
+                            "Today: ${timeTracker.formatDuration(instagramDiscoveryUsedToday)} / " +
+                            "$instagramDiscoveryBudgetMinutes min"
                     )
                 },
                 leadingContent = { Icon(Icons.Outlined.Timer, contentDescription = null) }
