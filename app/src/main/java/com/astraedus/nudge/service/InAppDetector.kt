@@ -122,7 +122,22 @@ class InAppDetector @Inject constructor(
     fun isInstagramReelPlayer(rootNode: AccessibilityNodeInfo?): Boolean {
         if (rootNode == null) return false
         return try {
-            findsAnyViewId(rootNode, INSTAGRAM_CLIPS_VIEWER_IDS)
+            // Primary signal: containers observed inside the full-screen player. This keeps direct
+            // arrivals (DM/profile/deep link) countable even though they have no bottom nav.
+            if (findsAnyViewId(rootNode, INSTAGRAM_CLIPS_VIEWER_IDS)) return true
+
+            // Resilience signal: when the user entered through Instagram's Reels tab, the tab itself
+            // is a stronger and considerably more stable contract than the internal player-container
+            // ids. Those container ids have already varied by entry route/device, and HikaruFocus's
+            // first real-device test exposed the failure mode: if none resolves, the dedicated budget
+            // clock never starts and the app appears to do absolutely nothing no matter how long the
+            // user watches Reels.
+            //
+            // IMPORTANT: do not reuse detectInstagram() here. Generic Nudge intentionally maps the
+            // HOME feed to Feature.REELS for historical doom-scroll rules; the HikaruFocus budget must
+            // count only the actual Reels surface. Asking specifically whether clips_tab is active
+            // preserves that boundary while giving tab-entered Reels a second independent signal.
+            findActiveInstagramTab(rootNode) == "clips_tab"
         } catch (e: Exception) {
             logger.w("instagram reel-player detection failed", e)
             false
@@ -202,44 +217,66 @@ class InAppDetector @Inject constructor(
     }
 
     /**
-     * Find which Instagram bottom nav tab is active by checking resource IDs.
-     * Returns the tab ID suffix (e.g. "feed_tab", "clips_tab") or null if not found.
+     * Find which Instagram bottom-nav tab is active by walking the LIVE accessibility tree.
+     *
+     * Do not replace this with `findAccessibilityNodeInfosByViewId(tabId)` plus a child inspection.
+     * A real-device Nudge investigation found that nodes returned by that lookup do not reliably
+     * expose the selected state of the nested `tab_icon`, even though the same child is selected when
+     * reached by walking from `rootInActiveWindow`. The old implementation therefore worked in mocks
+     * while returning null on devices -- exactly the kind of false-green HikaruFocus must avoid.
+     *
+     * We carry the nearest tab id down the traversal. The first selected node inside one of the four
+     * known tab subtrees names the active tab. The walk is bounded: the bottom bar is shallow, and a
+     * pathological host tree must never make feature detection unbounded on the accessibility thread.
      */
     private fun findActiveInstagramTab(root: AccessibilityNodeInfo): String? {
-        val tabIds = listOf("feed_tab", "clips_tab", "search_tab", "profile_tab")
-        for (tabId in tabIds) {
-            val nodes = root.findAccessibilityNodeInfosByViewId(
-                "com.instagram.android:id/$tabId"
-            )
-            if (nodes.isNotEmpty()) {
-                for (node in nodes) {
-                    if (isTabActive(node)) {
-                        recycleNodes(nodes)
-                        return tabId
-                    }
-                }
-                recycleNodes(nodes)
-            }
-        }
-        return null
-    }
+        data class PendingNode(
+            val node: AccessibilityNodeInfo,
+            val owningTab: String?,
+            val recycleWhenDone: Boolean
+        )
 
-    /**
-     * Check if a tab node is active by looking for selected=true on the node
-     * itself or any of its descendants (up to 3 levels deep).
-     */
-    private fun isTabActive(node: AccessibilityNodeInfo): Boolean {
-        if (node.isSelected) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (child.isSelected) return true
-            // Check grandchildren too
-            for (j in 0 until child.childCount) {
-                val grandchild = child.getChild(j) ?: continue
-                if (grandchild.isSelected) return true
+        val tabIds = setOf("feed_tab", "clips_tab", "search_tab", "profile_tab")
+        val queue = ArrayDeque<PendingNode>()
+        queue += PendingNode(root, owningTab = null, recycleWhenDone = false)
+        var visited = 0
+
+        fun recycleQueuedNodes() {
+            while (queue.isNotEmpty()) {
+                val pending = queue.removeFirst()
+                if (pending.recycleWhenDone) recycleNode(pending.node)
             }
         }
-        return false
+
+        while (queue.isNotEmpty() && visited < DIAGNOSTIC_NODE_LIMIT) {
+            val pending = queue.removeFirst()
+            val node = pending.node
+            visited++
+
+            var owningTab = pending.owningTab
+            try {
+                val id = node.viewIdResourceName
+                val suffix = id
+                    ?.takeIf { it.startsWith("com.instagram.android:id/") }
+                    ?.substringAfterLast('/')
+                if (suffix != null && suffix in tabIds) owningTab = suffix
+
+                if (owningTab != null && node.isSelected) {
+                    recycleQueuedNodes()
+                    return owningTab
+                }
+
+                for (i in 0 until node.childCount) {
+                    val child = node.getChild(i) ?: continue
+                    queue += PendingNode(child, owningTab, recycleWhenDone = true)
+                }
+            } finally {
+                if (pending.recycleWhenDone) recycleNode(node)
+            }
+        }
+
+        recycleQueuedNodes()
+        return null
     }
 
     /** Fallback text-based detection for older Instagram versions. */
@@ -334,12 +371,16 @@ class InAppDetector @Inject constructor(
 
     private fun recycleNodes(nodes: List<AccessibilityNodeInfo>) {
         for (node in nodes) {
-            try {
-                @Suppress("DEPRECATION")
-                node.recycle()
-            } catch (_: Exception) {
-                // Already recycled -- ignore
-            }
+            recycleNode(node)
+        }
+    }
+
+    private fun recycleNode(node: AccessibilityNodeInfo) {
+        try {
+            @Suppress("DEPRECATION")
+            node.recycle()
+        } catch (_: Exception) {
+            // Already recycled -- ignore
         }
     }
 }

@@ -41,6 +41,38 @@ class InAppDetectorClipsViewerTest {
         return root
     }
 
+    /**
+     * Bottom-nav fixture with one selected tab-icon child and no clips-viewer container ids.
+     * This reproduces the important fallback path: a normal Reels-tab session must still spend the
+     * HikaruFocus budget even if Instagram renames the internal player containers on this device.
+     */
+    private fun rootWithActiveTab(activeTabId: String): AccessibilityNodeInfo {
+        val root = mockk<AccessibilityNodeInfo>(relaxed = true)
+        every { root.viewIdResourceName } returns null
+        every { root.isSelected } returns false
+        every { root.findAccessibilityNodeInfosByViewId(any()) } returns emptyList()
+
+        val tabIds = listOf("feed_tab", "clips_tab", "search_tab", "profile_tab")
+        val tabs = tabIds.map { tabId ->
+            val tab = mockk<AccessibilityNodeInfo>(relaxed = true)
+            val icon = mockk<AccessibilityNodeInfo>(relaxed = true)
+            every { tab.viewIdResourceName } returns "com.instagram.android:id/$tabId"
+            every { tab.isSelected } returns false
+            every { tab.childCount } returns 1
+            every { tab.getChild(0) } returns icon
+            every { icon.viewIdResourceName } returns "com.instagram.android:id/tab_icon"
+            every { icon.isSelected } returns (tabId == activeTabId)
+            every { icon.childCount } returns 0
+            tab
+        }
+
+        every { root.childCount } returns tabs.size
+        tabs.forEachIndexed { index, tab ->
+            every { root.getChild(index) } returns tab
+        }
+        return root
+    }
+
     /** The exact surface captured from a reel opened out of a DM thread. */
     @Test
     fun `reel opened from a DM is detected as REELS`() {
@@ -73,6 +105,16 @@ class InAppDetectorClipsViewerTest {
                 detector.detectFeature(ig, rootWith(setOf(id)))
             )
         }
+    }
+
+    @Test
+    fun `active Reels tab spends budget even when player container ids are absent`() {
+        org.junit.Assert.assertTrue(detector.isInstagramReelPlayer(rootWithActiveTab("clips_tab")))
+    }
+
+    @Test
+    fun `active Home tab does not spend HikaruFocus reel budget`() {
+        org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(rootWithActiveTab("feed_tab")))
     }
 
     /**
