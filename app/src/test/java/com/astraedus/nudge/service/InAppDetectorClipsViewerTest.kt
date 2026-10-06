@@ -46,21 +46,37 @@ class InAppDetectorClipsViewerTest {
      * This reproduces the important fallback path: a normal Reels-tab session must still spend the
      * HikaruFocus budget even if Instagram renames the internal player containers on this device.
      */
-    private fun rootWithActiveTab(activeTabId: String): AccessibilityNodeInfo {
+    private fun rootWithActiveTab(
+        activeTabId: String,
+        reelsTabUsesStableId: Boolean = true
+    ): AccessibilityNodeInfo {
         val root = mockk<AccessibilityNodeInfo>(relaxed = true)
         every { root.viewIdResourceName } returns null
+        every { root.contentDescription } returns null
         every { root.isSelected } returns false
         every { root.findAccessibilityNodeInfosByViewId(any()) } returns emptyList()
 
-        val tabIds = listOf("feed_tab", "clips_tab", "search_tab", "profile_tab")
+        val tabIds = listOf("feed_tab", "clips_tab", "direct_tab", "search_tab", "profile_tab")
         val tabs = tabIds.map { tabId ->
             val tab = mockk<AccessibilityNodeInfo>(relaxed = true)
             val icon = mockk<AccessibilityNodeInfo>(relaxed = true)
-            every { tab.viewIdResourceName } returns "com.instagram.android:id/$tabId"
+            every { tab.viewIdResourceName } returns when {
+                tabId == "clips_tab" && !reelsTabUsesStableId -> "com.instagram.android:id/renamed_reels_tab"
+                else -> "com.instagram.android:id/$tabId"
+            }
+            every { tab.contentDescription } returns when (tabId) {
+                "feed_tab" -> "Home"
+                "clips_tab" -> "Reels"
+                "direct_tab" -> "Message"
+                "search_tab" -> "Search and explore"
+                "profile_tab" -> "Profile"
+                else -> null
+            }
             every { tab.isSelected } returns false
             every { tab.childCount } returns 1
             every { tab.getChild(0) } returns icon
             every { icon.viewIdResourceName } returns "com.instagram.android:id/tab_icon"
+            every { icon.contentDescription } returns null
             every { icon.isSelected } returns (tabId == activeTabId)
             every { icon.childCount } returns 0
             tab
@@ -110,11 +126,29 @@ class InAppDetectorClipsViewerTest {
     @Test
     fun `active Reels tab spends budget even when player container ids are absent`() {
         org.junit.Assert.assertTrue(detector.isInstagramReelPlayer(rootWithActiveTab("clips_tab")))
+        assertEquals(
+            InAppDetector.InstagramReelPresence.VISIBLE,
+            detector.instagramReelPresence(rootWithActiveTab("clips_tab"))
+        )
     }
 
     @Test
     fun `active Home tab does not spend HikaruFocus reel budget`() {
         org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(rootWithActiveTab("feed_tab")))
+        assertEquals(
+            InAppDetector.InstagramReelPresence.NOT_VISIBLE,
+            detector.instagramReelPresence(rootWithActiveTab("feed_tab"))
+        )
+    }
+
+    @Test
+    fun `Reels content description survives a renamed internal tab id`() {
+        assertEquals(
+            InAppDetector.InstagramReelPresence.VISIBLE,
+            detector.instagramReelPresence(
+                rootWithActiveTab("clips_tab", reelsTabUsesStableId = false)
+            )
+        )
     }
 
     /**
@@ -134,12 +168,21 @@ class InAppDetectorClipsViewerTest {
 
         assertNull(detector.detectFeature(ig, root))
         org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(root))
+        assertEquals(
+            InAppDetector.InstagramReelPresence.NOT_VISIBLE,
+            detector.instagramReelPresence(root)
+        )
     }
 
     /** The player check must not hijack a surface with no clips containers and no active tab. */
     @Test
     fun `an unknown surface still returns null`() {
-        assertNull(detector.detectFeature(ig, rootWith(emptySet())))
+        val root = rootWith(emptySet())
+        assertNull(detector.detectFeature(ig, root))
+        assertEquals(
+            InAppDetector.InstagramReelPresence.UNKNOWN,
+            detector.instagramReelPresence(root)
+        )
     }
 
     /** A null root must never throw — detection is best-effort by contract. */
@@ -147,6 +190,10 @@ class InAppDetectorClipsViewerTest {
     fun `null root returns null`() {
         assertNull(detector.detectFeature(ig, null))
         org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(null))
+        assertEquals(
+            InAppDetector.InstagramReelPresence.UNKNOWN,
+            detector.instagramReelPresence(null)
+        )
     }
 
     /** The player containers are Instagram-specific and must not leak into YouTube detection. */

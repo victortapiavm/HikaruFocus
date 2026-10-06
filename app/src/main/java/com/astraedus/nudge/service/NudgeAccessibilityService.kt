@@ -2375,7 +2375,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         // time silently spend the allowance. The player containers work for every arrival route,
         // including DM and external/deep links; those routes remain playable after the budget.
         if (packageName == InstagramSurfaces.packageName) {
-            observeInstagramReelPlayer(detector.isInstagramReelPlayer(rootNode))
+            observeInstagramReelPresence(detector.instagramReelPresence(rootNode))
         }
 
         // Tab Vanish and the Following steer ride THIS tree read rather than adding one. Both are
@@ -2754,6 +2754,18 @@ class NudgeAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * An accessibility snapshot can be incomplete while the Reel player is still on screen.
+     * UNKNOWN therefore preserves the existing clock instead of treating missing evidence as an exit.
+     */
+    private fun observeInstagramReelPresence(presence: InAppDetector.InstagramReelPresence) {
+        when (presence) {
+            InAppDetector.InstagramReelPresence.VISIBLE -> observeInstagramReelPlayer(true)
+            InAppDetector.InstagramReelPresence.NOT_VISIBLE -> observeInstagramReelPlayer(false)
+            InAppDetector.InstagramReelPresence.UNKNOWN -> Unit
+        }
+    }
+
+    /**
      * Window-change/rebind observation. A null root is UNKNOWN, never evidence that the player
      * disappeared. [expectedPackage] prevents a stale root from starting the clock for an event
      * whose foreground claim has already moved elsewhere.
@@ -2765,7 +2777,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         if (expectedPackage != null && rootPackage != expectedPackage) return
         if (rootPackage != InstagramSurfaces.packageName) return
         val detector = entryPoint.inAppDetector()
-        observeInstagramReelPlayer(detector.isInstagramReelPlayer(root))
+        observeInstagramReelPresence(detector.instagramReelPresence(root))
         maintainHostSurfaces(InstagramSurfaces.packageName, root)
         maybeApplyInstagramExploreBackstop(detector.detectFeature(InstagramSurfaces.packageName, root))
     }

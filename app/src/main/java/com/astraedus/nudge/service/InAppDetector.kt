@@ -36,6 +36,17 @@ class InAppDetector @Inject constructor(
         TIKTOK_FEED("TikTok Feed", "TIKTOK_FEED")
     }
 
+    /**
+     * Accessibility trees are transient snapshots. A missing player id is not proof that the user
+     * left Reels, so HikaruFocus must distinguish a definite non-Reel surface from an inconclusive
+     * tree. UNKNOWN deliberately preserves an already-running Reel budget session.
+     */
+    enum class InstagramReelPresence {
+        VISIBLE,
+        NOT_VISIBLE,
+        UNKNOWN
+    }
+
     companion object {
         /** Packages that support in-app feature detection. */
         val SUPPORTED_PACKAGES = setOf(
@@ -67,6 +78,15 @@ class InAppDetector @Inject constructor(
             "com.instagram.android:id/clips_viewer_view_pager",
             "com.instagram.android:id/clips_video_container",
             "com.instagram.android:id/clips_media_component"
+        )
+
+        /** Positive evidence for common Instagram surfaces that are definitely not a Reel player. */
+        private val INSTAGRAM_NON_REEL_SURFACE_IDS = listOf(
+            "com.instagram.android:id/title_logo",
+            "com.instagram.android:id/sticky_header_list",
+            "com.instagram.android:id/thread_fragment_container",
+            "com.instagram.android:id/message_list",
+            "com.instagram.android:id/message_composer_bar"
         )
     }
 
@@ -111,7 +131,7 @@ class InAppDetector @Inject constructor(
     }
 
     /**
-     * True only for Instagram's actual full-screen Reel player.
+     * Classify whether Instagram's actual full-screen Reel player is visible.
      *
      * This is intentionally narrower than [Feature.REELS]. Nudge historically treats Instagram's
      * Home feed as REELS-equivalent for generic doomscroll rules; HikaruFocus's 20-minute discovery
@@ -119,12 +139,14 @@ class InAppDetector @Inject constructor(
      * (Reels tab, DM, WhatsApp/deep link, profile), while post-budget enforcement closes only the
      * discovery entry points.
      */
-    fun isInstagramReelPlayer(rootNode: AccessibilityNodeInfo?): Boolean {
-        if (rootNode == null) return false
+    fun instagramReelPresence(rootNode: AccessibilityNodeInfo?): InstagramReelPresence {
+        if (rootNode == null) return InstagramReelPresence.UNKNOWN
         return try {
             // Primary signal: containers observed inside the full-screen player. This keeps direct
             // arrivals (DM/profile/deep link) countable even though they have no bottom nav.
-            if (findsAnyViewId(rootNode, INSTAGRAM_CLIPS_VIEWER_IDS)) return true
+            if (findsAnyViewId(rootNode, INSTAGRAM_CLIPS_VIEWER_IDS)) {
+                return InstagramReelPresence.VISIBLE
+            }
 
             // Resilience signal: when the user entered through Instagram's Reels tab, the tab itself
             // is a stronger and considerably more stable contract than the internal player-container
@@ -137,12 +159,24 @@ class InAppDetector @Inject constructor(
             // HOME feed to Feature.REELS for historical doom-scroll rules; the HikaruFocus budget must
             // count only the actual Reels surface. Asking specifically whether clips_tab is active
             // preserves that boundary while giving tab-entered Reels a second independent signal.
-            findActiveInstagramTab(rootNode) == "clips_tab"
+            when (findActiveInstagramTab(rootNode)) {
+                "clips_tab" -> InstagramReelPresence.VISIBLE
+                "feed_tab", "search_tab", "profile_tab", "direct_tab" ->
+                    InstagramReelPresence.NOT_VISIBLE
+                else -> if (findsAnyViewId(rootNode, INSTAGRAM_NON_REEL_SURFACE_IDS)) {
+                    InstagramReelPresence.NOT_VISIBLE
+                } else {
+                    InstagramReelPresence.UNKNOWN
+                }
+            }
         } catch (e: Exception) {
             logger.w("instagram reel-player detection failed", e)
-            false
+            InstagramReelPresence.UNKNOWN
         }
     }
+
+    fun isInstagramReelPlayer(rootNode: AccessibilityNodeInfo?): Boolean =
+        instagramReelPresence(rootNode) == InstagramReelPresence.VISIBLE
 
     /**
      * DIAGNOSTIC (debug builds only): log the distinct view IDs present when detection found
@@ -225,7 +259,7 @@ class InAppDetector @Inject constructor(
      * reached by walking from `rootInActiveWindow`. The old implementation therefore worked in mocks
      * while returning null on devices -- exactly the kind of false-green HikaruFocus must avoid.
      *
-     * We carry the nearest tab id down the traversal. The first selected node inside one of the four
+     * We carry the nearest tab id down the traversal. The first selected node inside one of the five
      * known tab subtrees names the active tab. The walk is bounded: the bottom bar is shallow, and a
      * pathological host tree must never make feature detection unbounded on the accessibility thread.
      */
@@ -236,7 +270,7 @@ class InAppDetector @Inject constructor(
             val recycleWhenDone: Boolean
         )
 
-        val tabIds = setOf("feed_tab", "clips_tab", "search_tab", "profile_tab")
+        val tabIds = setOf("feed_tab", "clips_tab", "search_tab", "profile_tab", "direct_tab")
         val queue = ArrayDeque<PendingNode>()
         queue += PendingNode(root, owningTab = null, recycleWhenDone = false)
         var visited = 0
@@ -259,7 +293,16 @@ class InAppDetector @Inject constructor(
                 val suffix = id
                     ?.takeIf { it.startsWith("com.instagram.android:id/") }
                     ?.substringAfterLast('/')
-                if (suffix != null && suffix in tabIds) owningTab = suffix
+                val description = node.contentDescription?.toString()
+                owningTab = when {
+                    suffix != null && suffix in tabIds -> suffix
+                    description == "Reels" -> "clips_tab"
+                    description == "Home" -> "feed_tab"
+                    description == "Search and explore" -> "search_tab"
+                    description == "Profile" -> "profile_tab"
+                    description == "Message" || description == "Messages" -> "direct_tab"
+                    else -> owningTab
+                }
 
                 if (owningTab != null && node.isSelected) {
                     recycleQueuedNodes()
