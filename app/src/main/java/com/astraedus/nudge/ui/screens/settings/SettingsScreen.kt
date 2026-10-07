@@ -291,7 +291,7 @@ fun SettingsScreen(
                 headlineContent = { Text("Instagram discovery budget") },
                 supportingContent = {
                     Text(
-                        "After this much total Instagram time today, Reels and Search/Explore are closed. " +
+                        "After this much total Instagram time today, Reels and Search/Explore are blocked. " +
                             "Home, DMs and profiles remain usable.\n" +
                             "Today: ${timeTracker.formatDuration(instagramDiscoveryUsedToday)} / " +
                             "$instagramDiscoveryBudgetMinutes min"
