@@ -2984,7 +2984,8 @@ class NudgeAccessibilityService : AccessibilityService() {
         // is still visually present on the source screen, so clicking Home immediately gives muscle-
         // memory taps effectively no dwell time in Reels/Explore.
         val liveRoot = try { rootInActiveWindow } catch (_: Exception) { null }
-        if (liveRoot?.packageName?.toString() == InstagramSurfaces.packageName) {
+        val liveRootPackage = try { liveRoot?.packageName?.toString() } catch (_: Exception) { null }
+        if (liveRoot != null && liveRootPackage == InstagramSurfaces.packageName) {
             HostNodeFinder.findClickable(liveRoot, InstagramSurfaces.homeTab)?.let { home ->
                 syntheticClicks.onDispatch(SystemClock.elapsedRealtime())
                 try {
