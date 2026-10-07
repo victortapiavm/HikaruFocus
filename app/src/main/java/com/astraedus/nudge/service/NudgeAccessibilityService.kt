@@ -216,24 +216,16 @@ class NudgeAccessibilityService : AccessibilityService() {
      */
     private val tabCoverDecider = TabCoverDecider()
 
-    /**
-     * HikaruFocus keeps Nudge's generic Reels cover intact and adds ONE second instance for
-     * Instagram Search/Explore. The existing manager intentionally owns one window; reusing the
-     * same tested implementation is much safer than widening that battle-tested generic contract
-     * for a fork-specific two-door policy.
-     */
-    private lateinit var instagramExploreCover: TabCoverOverlayManager
-
-    /** Reel-player-only daily budget. Home, DMs and profiles never touch this state. */
+    /** App-wide Instagram daily budget. Every foreground Instagram surface consumes it. */
     private val instagramBudgetTimeTracker = TimeTracker()
     private val instagramBudgetLock = Any()
     private var instagramBudgetState: InstagramDiscoveryBudgetState = InstagramDiscoveryBudget.EMPTY
     private var instagramBudgetHydrated: Boolean = false
     private var instagramDiscoveryLimitMinutesCached: Int = InstagramDiscoveryBudget.DEFAULT_LIMIT_MINUTES
     private val instagramDiscoveryLimitReady = CompletableDeferred<Unit>()
-    private var instagramReelCheckpointElapsedMs: Long? = null
-    private var instagramReelCheckpointWallMs: Long? = null
-    private lateinit var instagramReelClock: ForegroundClock
+    private var instagramAppCheckpointElapsedMs: Long? = null
+    private var instagramAppCheckpointWallMs: Long? = null
+    private lateinit var instagramAppClock: ForegroundClock
 
     /**
      * "Have we already steered this arrival at the home feed, and is a menu tap outstanding."
@@ -276,9 +268,9 @@ class NudgeAccessibilityService : AccessibilityService() {
          */
         private const val FOREGROUND_TICK_MS = 30_000L
 
-        /** Periodic persistence while passively watching Reels; exit checkpoints are immediate. */
-        private const val INSTAGRAM_REEL_BUDGET_TICK_MS = 30_000L
-        private const val INSTAGRAM_REEL_CLOCK_KEY = "instagram:reel-player"
+        /** App-wide Instagram budget checkpoint. Lock state is refreshed within five seconds. */
+        private const val INSTAGRAM_APP_BUDGET_TICK_MS = 5_000L
+        private const val INSTAGRAM_APP_CLOCK_KEY = "instagram:foreground"
 
         /**
          * Once discovery is locked, Explore is an enforcement surface rather than a generic feature
@@ -924,10 +916,6 @@ class NudgeAccessibilityService : AccessibilityService() {
         entryPoint.counterOverlayManager().setServiceContext(this)
         entryPoint.timeRemainingOverlayManager().setServiceContext(this)
         entryPoint.tabCoverOverlayManager().setServiceContext(this)
-        instagramExploreCover = TabCoverOverlayManager(
-            applicationContext,
-            entryPoint.nudgeLogger()
-        ).also { it.setServiceContext(this) }
 
         val passthrough = entryPoint.passthroughManager()
         passthroughManagerInstance = passthrough
@@ -1009,19 +997,16 @@ class NudgeAccessibilityService : AccessibilityService() {
             logger = entryPoint.nudgeLogger(),
             label = "app"
         )
-        instagramReelClock = ForegroundClock(
+        instagramAppClock = ForegroundClock(
             scope = serviceScope,
-            tickIntervalMs = INSTAGRAM_REEL_BUDGET_TICK_MS,
+            tickIntervalMs = INSTAGRAM_APP_BUDGET_TICK_MS,
             logger = entryPoint.nudgeLogger(),
-            label = "instagram-reel"
+            label = "instagram-app"
         )
-        // Hydrate FIRST, then inspect the live root. An accessibility event can beat this coroutine;
-        // pre-hydration Reel deltas are held in memory and added to the stored baseline by
-        // hydrateInstagramBudgetIfNeeded(), never max-merged away.
-        //
-        // A service/process rebind may happen while Instagram is already sitting in a Reel player,
-        // with no fresh navigation event guaranteed. The one live-root read resumes accounting and
-        // restores both discovery-door covers/backstops without blocking a Reel already on screen.
+        // Hydrate FIRST, then inspect the live root. A service/process rebind may happen while
+        // Instagram is already foreground, with no fresh navigation event guaranteed. The live-root
+        // probe resumes app-wide accounting and re-applies the discovery gate immediately if today's
+        // total is already exhausted.
         // Read the persisted master toggle here instead of trusting globalEnabledCached: that cache
         // deliberately starts optimistic until its collector emits, and a disabled HikaruFocus must
         // behave as if uninstalled -- including NOT spending the Reel discovery budget during a
@@ -1030,6 +1015,7 @@ class NudgeAccessibilityService : AccessibilityService() {
             hydrateInstagramBudgetIfNeeded()
             instagramDiscoveryLimitReady.await()
             if (entryPoint.nudgePreferences().isGlobalEnabled.first()) {
+                syncInstagramBudgetFromUsageStats("service_connected")
                 withContext(Dispatchers.Main) { observeInstagramActiveWindow() }
             }
         }
@@ -1469,6 +1455,17 @@ class NudgeAccessibilityService : AccessibilityService() {
 
             A11yEventType.VIEW_CLICKED,
             A11yEventType.VIEW_SCROLLED -> {
+                // Post-budget Instagram taps on Reels/Search get an eager re-check instead of waiting
+                // for the first debounced content-change from the destination. Accessibility cannot
+                // cancel Instagram's click before it happens, but this closes the several-second
+                // muscle-memory window the old overlay approach left open.
+                if (
+                    record.type == A11yEventType.VIEW_CLICKED &&
+                    maybeInterceptInstagramDiscoveryTap(event, packageName)
+                ) {
+                    return
+                }
+
                 // A click we performed ourselves (the Following steer) is reported by the platform
                 // exactly like a finger. Counting it would inflate the number this overlay exists to
                 // make honest -- issue #28's mistake from the other direction, with the blocker as
@@ -1529,8 +1526,7 @@ class NudgeAccessibilityService : AccessibilityService() {
         entryPoint.blockLaunchGuard().onForegroundSignal(signal)
         entryPoint.passthroughManager().onForegroundSignal(signal, sittingClock())
         entryPoint.tabCoverOverlayManager().onForegroundSignal(signal)
-        if (::instagramExploreCover.isInitialized) instagramExploreCover.onForegroundSignal(signal)
-        maintainInstagramReelSessionPresence(signal)
+        maintainInstagramAppBudgetPresence(signal)
         // The fourth consumer: "which apps did the user open" for the bounce check-in. Here for the
         // same reason as the other three, so no early return below can starve it. A no-op unless
         // the feature is on AND a wall has armed a streak.
@@ -1538,19 +1534,22 @@ class NudgeAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Stop Reel-player accounting only when the foreground classification proves Instagram is no
-     * longer what the user is looking at. Transient/system/awareness windows make no such claim.
+     * App-wide Instagram accounting follows foreground ownership, not Reel-player detection.
+     * This is the key semantic difference from the first HikaruFocus build: Home, DMs, profile,
+     * Reels and Explore all spend the same daily allowance.
      */
-    private fun maintainInstagramReelSessionPresence(signal: ForegroundSignal) {
+    private fun maintainInstagramAppBudgetPresence(signal: ForegroundSignal) {
         when (signal) {
             is ForegroundSignal.AppWindow -> {
-                if (signal.packageName != InstagramSurfaces.packageName) {
-                    stopInstagramReelBudgetSession("another_app")
+                if (signal.packageName == InstagramSurfaces.packageName) {
+                    startInstagramAppBudgetSession()
+                } else {
+                    stopInstagramAppBudgetSession("another_app")
                 }
             }
-            is ForegroundSignal.Home -> stopInstagramReelBudgetSession("home")
-            is ForegroundSignal.OwnUi -> stopInstagramReelBudgetSession("own_ui")
-            is ForegroundSignal.SystemSurface,
+            is ForegroundSignal.Home -> stopInstagramAppBudgetSession("home")
+            is ForegroundSignal.OwnUi -> stopInstagramAppBudgetSession("own_ui")
+            is ForegroundSignal.SystemSurface -> stopInstagramAppBudgetSession("system_surface")
             is ForegroundSignal.AwarenessOverlay,
             is ForegroundSignal.Transient,
             is ForegroundSignal.PipOnly,
@@ -2181,7 +2180,7 @@ class NudgeAccessibilityService : AccessibilityService() {
      * ([#56](https://github.com/astraedus/nudge/issues/56)).
      */
     private fun hideAllOverlays() {
-        stopInstagramReelBudgetSession("screen_not_visible")
+        stopInstagramAppBudgetSession("screen_not_visible")
         stopForegroundTimeTicker("globally_disabled")
         endWebSession("globally_disabled")
         try {
@@ -2190,7 +2189,6 @@ class NudgeAccessibilityService : AccessibilityService() {
             // The cover is enforcement, so it goes with the rest of it: a globally-disabled Nudge
             // must behave as if uninstalled, and a screen nobody is looking at owes no cover either.
             entryPoint.tabCoverOverlayManager().hide()
-            if (::instagramExploreCover.isInitialized) instagramExploreCover.hide()
         } catch (e: Exception) {
             entryPoint.nudgeLogger().w("overlay hide-all failed", e)
         }
@@ -2370,20 +2368,17 @@ class NudgeAccessibilityService : AccessibilityService() {
 
         val detector = entryPoint.inAppDetector()
 
-        // HikaruFocus counts ONLY the actual full-screen Reel player. Nudge's generic Feature.REELS
-        // also covers the Home feed, so using that enum for the 20-minute budget would make DMs/home
-        // time silently spend the allowance. The player containers work for every arrival route,
-        // including DM and external/deep links; those routes remain playable after the budget.
-        if (packageName == InstagramSurfaces.packageName) {
-            observeInstagramReelPresence(detector.instagramReelPresence(rootNode))
-        }
-
         // Tab Vanish and the Following steer ride THIS tree read rather than adding one. Both are
         // node-tree questions about the same instant, the read is the expensive part on this path
         // (a device capture measured ~26k content-change events in a few minutes of Instagram use),
         // and asking them here means they inherit the same debounce the detector already pays for.
         maintainHostSurfaces(packageName, rootNode)
 
+        val instagramReelPresence = if (packageName == InstagramSurfaces.packageName) {
+            detector.instagramReelPresence(rootNode)
+        } else {
+            null
+        }
         val feature = detector.detectFeature(packageName, rootNode)
 
         // TOLD FIRST, AND TOLD EVEN WHEN THE ANSWER IS NULL. This used to be
@@ -2399,12 +2394,13 @@ class NudgeAccessibilityService : AccessibilityService() {
         // cannot recognise (`docs/BACKLOG.md`: "counter doesn't increment on YouTube swipes"). This
         // reuses the tree read that was already happening here rather than adding one.
         interactionHandler.noteDetectedFeature(packageName, feature)
-        if (feature == null) return
 
-        // Search/Explore is a discovery door, not a social arrival route. After the Reel budget is
-        // spent the visible tab is already covered; this is the backstop for Instagram's swipe path
-        // into Explore. Reels deliberately have NO equivalent ejection path.
-        if (packageName == InstagramSurfaces.packageName) maybeApplyInstagramExploreBackstop(feature)
+        // HikaruFocus no longer relies on black tab-cover overlays for its Instagram budget. Once the
+        // app-wide allowance is exhausted, both discovery surfaces are actively ejected back to Home.
+        if (instagramReelPresence != null) {
+            maybeApplyInstagramDiscoveryBackstop(feature, instagramReelPresence)
+        }
+        if (feature == null) return
 
         val passthrough = entryPoint.passthroughManager()
 
@@ -2424,8 +2420,8 @@ class NudgeAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Maintain the two IN-HOST-APP surfaces for [packageName]: the Reels tab cover (Tab Vanish) and
-     * the Following steer. Called from [detectAndEvaluateFeature] with the tree read it already did.
+     * Maintain Nudge's generic in-host-app surfaces (rule-driven Tab Vanish + Following steer).
+     * HikaruFocus's Instagram discovery budget deliberately does NOT use these covers anymore.
      *
      * ## Everything the node tree is asked is asked HERE, synchronously, before anything suspends
      *
@@ -2453,16 +2449,9 @@ class NudgeAccessibilityService : AccessibilityService() {
             HostNodeFinder.findPlacement(rootNode, locator)?.let { feature to it }
         }
 
-        val explorePlacement = if (packageName == InstagramSurfaces.packageName) {
-            InstagramSurfaces.discoveryGateTabs["EXPLORE"]?.let {
-                HostNodeFinder.findPlacement(rootNode, it)
-            }
-        } else null
-
         serviceScope.launch {
             if (!entryPoint.nudgePreferences().isGlobalEnabled.first()) return@launch
             maintainTabCover(packageName, surfaces, vanishable)
-            maintainInstagramExploreCover(packageName, surfaces, explorePlacement)
             maintainFollowingSteer(packageName, surfaces, surface, menuVisible)
         }
     }
@@ -2487,13 +2476,17 @@ class NudgeAccessibilityService : AccessibilityService() {
     ) {
         val cover = entryPoint.tabCoverOverlayManager()
 
-        val focusRequested = packageName == InstagramSurfaces.packageName &&
-            InstagramDiscoveryPolicy.shouldGateTab(
-                vanishable?.first,
-                isInstagramDiscoveryLocked()
-            )
+        // HikaruFocus does not draw opaque tab-cover windows over Instagram anymore. Real-device QA
+        // showed every failure mode an out-of-process overlay can have here: delayed appearance,
+        // stale rectangles over DMs/launcher, theme mismatch, and moments where the cover is absent
+        // while the tab remains tappable. Instagram's discovery budget now enforces by ejecting the
+        // actual Reels/Explore surface instead. Keep Tab Vanish available for other host apps/rules.
+        if (packageName == InstagramSurfaces.packageName) {
+            cover.hide()
+            return
+        }
 
-        val requested = focusRequested || (vanishable != null && run {
+        val requested = vanishable != null && run {
             val decision = entryPoint.evaluateBlockUseCase().invoke(
                 packageName = packageName,
                 detectedFeature = vanishable.first
@@ -2501,7 +2494,7 @@ class NudgeAccessibilityService : AccessibilityService() {
             decision is BlockDecision.Block &&
                 decision.mode == BlockMode.HARD_BLOCK &&
                 decision.tabVanish
-        })
+        }
 
         val effect = tabCoverDecider.decide(
             vanishRequested = requested,
@@ -2515,35 +2508,6 @@ class NudgeAccessibilityService : AccessibilityService() {
             effect = effect,
             color = surfaces.navBarColor(isNightMode()),
             label = coverLabel(vanishable?.first)
-        )
-    }
-
-    /** Search/Explore's second cover. It is driven only by HikaruFocus's Reel-player budget. */
-    private suspend fun maintainInstagramExploreCover(
-        packageName: String,
-        surfaces: PlatformSurfaces,
-        placement: TabCoverPlacement?
-    ) {
-        if (!::instagramExploreCover.isInitialized) return
-
-        val requested = packageName == InstagramSurfaces.packageName &&
-            placement != null &&
-            InstagramDiscoveryPolicy.shouldGateTab(
-                InstagramDiscoveryPolicy.EXPLORE,
-                isInstagramDiscoveryLocked()
-            )
-        val effect = tabCoverDecider.decide(
-            vanishRequested = requested,
-            bounds = placement,
-            shown = instagramExploreCover.shownPlacement()
-        )
-        if (effect is TabCoverEffect.None) return
-
-        instagramExploreCover.apply(
-            packageName = packageName,
-            effect = effect,
-            color = surfaces.navBarColor(isNightMode()),
-            label = coverLabel("EXPLORE")
         )
     }
 
@@ -2721,54 +2685,33 @@ class NudgeAccessibilityService : AccessibilityService() {
         return "${feature?.displayName ?: "This tab"} blocked by $ownAppLabel"
     }
 
-    /**
-     * Edge-trigger the dedicated Reel-player clock from the debounced Instagram tree observation.
-     * Starting it never enforces anything: reaching the configured limit only changes what happens
-     * the next time the bottom navigation (or Explore) is observed.
-     */
-    private fun observeInstagramReelPlayer(visible: Boolean) {
-        if (!visible) {
-            stopInstagramReelBudgetSession("player_hidden")
-            return
-        }
-
+    /** Start app-wide Instagram accounting. Idempotent for repeated window/content events. */
+    private fun startInstagramAppBudgetSession() {
+        if (!globalEnabledCached) return
         val nowElapsed = SystemClock.elapsedRealtime()
         val nowWall = System.currentTimeMillis()
         val started = synchronized(instagramBudgetLock) {
-            if (instagramReelCheckpointElapsedMs != null) {
+            if (instagramAppCheckpointElapsedMs != null) {
                 false
             } else {
-                instagramReelCheckpointElapsedMs = nowElapsed
-                instagramReelCheckpointWallMs = nowWall
+                instagramAppCheckpointElapsedMs = nowElapsed
+                instagramAppCheckpointWallMs = nowWall
                 true
             }
         }
         if (!started) return
 
-        entryPoint.nudgeLogger().i("instagram reel budget session started")
-        if (::instagramReelClock.isInitialized) {
-            instagramReelClock.start(INSTAGRAM_REEL_CLOCK_KEY) {
-                checkpointInstagramReelUsage("periodic")
+        entryPoint.nudgeLogger().i("instagram app budget session started")
+        if (::instagramAppClock.isInitialized) {
+            instagramAppClock.start(INSTAGRAM_APP_CLOCK_KEY) {
+                checkpointInstagramAppUsage("periodic")
             }
         }
     }
 
     /**
-     * An accessibility snapshot can be incomplete while the Reel player is still on screen.
-     * UNKNOWN therefore preserves the existing clock instead of treating missing evidence as an exit.
-     */
-    private fun observeInstagramReelPresence(presence: InAppDetector.InstagramReelPresence) {
-        when (presence) {
-            InAppDetector.InstagramReelPresence.VISIBLE -> observeInstagramReelPlayer(true)
-            InAppDetector.InstagramReelPresence.NOT_VISIBLE -> observeInstagramReelPlayer(false)
-            InAppDetector.InstagramReelPresence.UNKNOWN -> Unit
-        }
-    }
-
-    /**
-     * Window-change/rebind observation. A null root is UNKNOWN, never evidence that the player
-     * disappeared. [expectedPackage] prevents a stale root from starting the clock for an event
-     * whose foreground claim has already moved elsewhere.
+     * Window-change/rebind observation. [expectedPackage] prevents a stale root from acting on an
+     * event whose foreground claim already moved elsewhere.
      */
     private fun observeInstagramActiveWindow(expectedPackage: String? = null) {
         if (!globalEnabledCached) return
@@ -2776,14 +2719,18 @@ class NudgeAccessibilityService : AccessibilityService() {
         val rootPackage = try { root.packageName?.toString() } catch (_: Exception) { null } ?: return
         if (expectedPackage != null && rootPackage != expectedPackage) return
         if (rootPackage != InstagramSurfaces.packageName) return
+        startInstagramAppBudgetSession()
         val detector = entryPoint.inAppDetector()
-        observeInstagramReelPresence(detector.instagramReelPresence(root))
+        val reelPresence = detector.instagramReelPresence(root)
         maintainHostSurfaces(InstagramSurfaces.packageName, root)
-        maybeApplyInstagramExploreBackstop(detector.detectFeature(InstagramSurfaces.packageName, root))
+        maybeApplyInstagramDiscoveryBackstop(
+            feature = detector.detectFeature(InstagramSurfaces.packageName, root),
+            reelPresence = reelPresence
+        )
     }
 
     /**
-     * Load today's persisted baseline exactly once. Reel time observed before this read completes is
+     * Load today's persisted baseline exactly once. Instagram time observed before this read completes is
      * pending usage for this service instance, so it is ADDED to the stored baseline rather than
      * max-merged away.
      */
@@ -2817,18 +2764,18 @@ class NudgeAccessibilityService : AccessibilityService() {
      * credited to today. This can under-count the final few seconds of yesterday, but can never make
      * yesterday's exhausted budget poison the new day -- the safer direction for a daily reset.
      */
-    private fun checkpointInstagramReelUsage(reason: String) {
+    private fun checkpointInstagramAppUsage(reason: String) {
         val nowElapsed = SystemClock.elapsedRealtime()
         val nowWall = System.currentTimeMillis()
         val todayStart = instagramBudgetTimeTracker.startOfToday()
 
         val checkpoint = synchronized(instagramBudgetLock) {
-            val lastElapsed = instagramReelCheckpointElapsedMs ?: return
-            val lastWall = instagramReelCheckpointWallMs ?: return
+            val lastElapsed = instagramAppCheckpointElapsedMs ?: return
+            val lastWall = instagramAppCheckpointWallMs ?: return
             val elapsedDelta = (nowElapsed - lastElapsed).coerceAtLeast(0L)
 
-            instagramReelCheckpointElapsedMs = nowElapsed
-            instagramReelCheckpointWallMs = nowWall
+            instagramAppCheckpointElapsedMs = nowElapsed
+            instagramAppCheckpointWallMs = nowWall
 
             val creditedMs = if (lastWall < todayStart) {
                 minOf(elapsedDelta, (nowWall - todayStart).coerceAtLeast(0L))
@@ -2853,7 +2800,7 @@ class NudgeAccessibilityService : AccessibilityService() {
                 todayStart,
                 limitMinutes
             )
-            ReelBudgetCheckpoint(
+            InstagramBudgetCheckpoint(
                 dayStartMs = todayStart,
                 deltaMs = creditedMs,
                 usedMs = instagramBudgetState.usedMs,
@@ -2864,14 +2811,15 @@ class NudgeAccessibilityService : AccessibilityService() {
         }
 
         entryPoint.nudgeLogger().d(
-            "instagram reel budget checkpoint reason=$reason deltaMs=${checkpoint.deltaMs} " +
+            "instagram app budget checkpoint reason=$reason deltaMs=${checkpoint.deltaMs} " +
                 "usedMs=${checkpoint.usedMs}"
         )
         if (checkpoint.becameLocked) {
             entryPoint.nudgeLogger().i(
                 "instagram discovery budget reached limitMinutes=${checkpoint.limitMinutes}; " +
-                    "reel player remains allowed"
+                    "Reels and Explore now return to Home"
             )
+            serviceScope.launch(Dispatchers.Main) { observeInstagramActiveWindow() }
         }
 
         if (checkpoint.persistNow) {
@@ -2887,17 +2835,55 @@ class NudgeAccessibilityService : AccessibilityService() {
     }
 
     /** Final checkpoint and stop. Idempotent, because foreground classification is intentionally noisy. */
-    private fun stopInstagramReelBudgetSession(reason: String) {
-        val active = synchronized(instagramBudgetLock) { instagramReelCheckpointElapsedMs != null }
+    private fun stopInstagramAppBudgetSession(reason: String) {
+        val active = synchronized(instagramBudgetLock) { instagramAppCheckpointElapsedMs != null }
         if (!active) return
 
-        checkpointInstagramReelUsage(reason)
+        checkpointInstagramAppUsage(reason)
         synchronized(instagramBudgetLock) {
-            instagramReelCheckpointElapsedMs = null
-            instagramReelCheckpointWallMs = null
+            instagramAppCheckpointElapsedMs = null
+            instagramAppCheckpointWallMs = null
         }
-        if (::instagramReelClock.isInitialized) instagramReelClock.stop(reason)
-        entryPoint.nudgeLogger().i("instagram reel budget session stopped reason=$reason")
+        if (::instagramAppClock.isInitialized) instagramAppClock.stop(reason)
+        entryPoint.nudgeLogger().i("instagram app budget session stopped reason=$reason")
+    }
+
+    /**
+     * Reconcile the cached budget with Android's authoritative foreground-time total. This runs on
+     * service connect/rebind so an update installed at 18:00 still knows about Instagram time used
+     * earlier that same day instead of granting a fresh allowance.
+     */
+    private suspend fun syncInstagramBudgetFromUsageStats(reason: String) {
+        hydrateInstagramBudgetIfNeeded()
+        val todayStart = instagramBudgetTimeTracker.startOfToday()
+        val absoluteUsageMs = try {
+            entryPoint.usageRepository().getDailyForegroundTimeMs(InstagramSurfaces.packageName)
+        } catch (e: Exception) {
+            entryPoint.nudgeLogger().w("instagram app budget usage-stats sync failed reason=$reason", e)
+            return
+        }
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val nowWall = System.currentTimeMillis()
+        val synced = synchronized(instagramBudgetLock) {
+            InstagramDiscoveryBudget.syncAbsoluteUsage(
+                state = instagramBudgetState,
+                todayStartMs = todayStart,
+                absoluteUsageMs = absoluteUsageMs
+            ).also {
+                instagramBudgetState = it
+                // If an accessibility event started the live app clock before this UsageStats read
+                // completed, the absolute sample already includes that foreground tail. Re-baseline
+                // the delta clock here so the same seconds are not billed twice after a service rebind.
+                if (instagramAppCheckpointElapsedMs != null) {
+                    instagramAppCheckpointElapsedMs = nowElapsed
+                    instagramAppCheckpointWallMs = nowWall
+                }
+            }
+        }
+        entryPoint.nudgePreferences().persistInstagramDiscoveryBudgetState(synced)
+        entryPoint.nudgeLogger().d(
+            "instagram app budget usage-stats sync reason=$reason usedMs=${synced.usedMs}"
+        )
     }
 
     /** Source-of-truth read for an enforcement decision. */
@@ -2931,42 +2917,130 @@ class NudgeAccessibilityService : AccessibilityService() {
         }
     }
 
-    /** Explore is the only surface the specialized policy ejects. Reels never enter this path. */
-    private fun maybeApplyInstagramExploreBackstop(feature: InAppDetector.Feature?) {
-        if (feature != InAppDetector.Feature.EXPLORE) return
+    /** Reliable post-budget enforcement: no floating covers, just leave discovery immediately. */
+    private fun maybeApplyInstagramDiscoveryBackstop(
+        feature: InAppDetector.Feature?,
+        reelPresence: InAppDetector.InstagramReelPresence
+    ) {
+        val gatedFeature = when {
+            reelPresence == InAppDetector.InstagramReelPresence.VISIBLE -> InstagramDiscoveryPolicy.REELS
+            feature == InAppDetector.Feature.EXPLORE -> InstagramDiscoveryPolicy.EXPLORE
+            else -> null
+        } ?: return
         serviceScope.launch {
             if (!entryPoint.nudgePreferences().isGlobalEnabled.first()) return@launch
-            if (InstagramDiscoveryPolicy.shouldReturnHome(feature.key, isInstagramDiscoveryLocked())) {
-                navigateInstagramHomeFromExplore()
+            if (InstagramDiscoveryPolicy.shouldReturnHome(gatedFeature, isInstagramDiscoveryLocked())) {
+                navigateInstagramHomeFromDiscovery(gatedFeature)
             }
         }
     }
 
     /**
-     * Explore can be reached by horizontal navigation even with its tab covered. Re-verify the
-     * current live tree immediately before clicking Home so a delayed coroutine cannot yank the user
-     * away from a DM/profile they already moved to. There is intentionally no Reels counterpart.
+     * Fast path for taps on the two discovery tabs after the app-wide budget is exhausted.
+     * We inspect the clicked node and up to two ancestors because Instagram commonly reports the
+     * nested icon as the event source while the stable locator lives on its tab container.
      */
-    private suspend fun navigateInstagramHomeFromExplore() = withContext(Dispatchers.Main) {
+    private fun maybeInterceptInstagramDiscoveryTap(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (packageName != InstagramSurfaces.packageName || !isInstagramDiscoveryLockedCached()) {
+            return false
+        }
+
+        var node = try { event.source } catch (_: Exception) { null } ?: return false
+        var matched = false
+        var depth = 0
+        while (depth < 3) {
+            val current = node
+            val viewId = try { current.viewIdResourceName } catch (_: Exception) { null }
+            val text = try { current.text?.toString() } catch (_: Exception) { null }
+            val description = try { current.contentDescription?.toString() } catch (_: Exception) { null }
+            if (InstagramSurfaces.discoveryGateTabs.values.any {
+                    it.matchesNode(viewId, text, description)
+                }
+            ) {
+                matched = true
+            }
+            val parent = if (!matched) {
+                try { current.parent } catch (_: Exception) { null }
+            } else {
+                null
+            }
+            try {
+                @Suppress("DEPRECATION")
+                current.recycle()
+            } catch (_: Exception) {
+                Unit
+            }
+            if (matched || parent == null) break
+            node = parent
+            depth++
+        }
+        if (!matched) return false
+
+        entryPoint.nudgeLogger().i("instagram discovery gate intercepted tab tap")
+        // First attempt is synchronous and usually wins before the destination has settled. The tab
+        // is still visually present on the source screen, so clicking Home immediately gives muscle-
+        // memory taps effectively no dwell time in Reels/Explore.
+        val liveRoot = try { rootInActiveWindow } catch (_: Exception) { null }
+        if (liveRoot?.packageName?.toString() == InstagramSurfaces.packageName) {
+            HostNodeFinder.findClickable(liveRoot, InstagramSurfaces.homeTab)?.let { home ->
+                syntheticClicks.onDispatch(SystemClock.elapsedRealtime())
+                try {
+                    home.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        serviceScope.launch {
+            // Let Instagram publish the destination tree, then eject from the live surface. The normal
+            // content-change path remains as a second independent backstop if this probe lands early.
+            delay(80L)
+            withContext(Dispatchers.Main) { observeInstagramActiveWindow(InstagramSurfaces.packageName) }
+        }
+        return true
+    }
+
+    /**
+     * Re-verify the current live tree immediately before acting so a delayed coroutine cannot yank
+     * the user away from a DM/profile they already moved to. Prefer clicking Instagram's Home tab;
+     * a full-screen Reel can omit bottom nav entirely, in which case BACK returns to the safe surface
+     * the user came from instead of throwing them out of Instagram.
+     */
+    private suspend fun navigateInstagramHomeFromDiscovery(expectedFeature: String) = withContext(Dispatchers.Main) {
         val root = try { rootInActiveWindow } catch (_: Exception) { null } ?: return@withContext
         val rootPackage = try { root.packageName?.toString() } catch (_: Exception) { null }
         if (rootPackage != InstagramSurfaces.packageName) return@withContext
-        val feature = entryPoint.inAppDetector().detectFeature(InstagramSurfaces.packageName, root)
-        if (feature != InAppDetector.Feature.EXPLORE) return@withContext
+        val detector = entryPoint.inAppDetector()
+        val reelPresence = detector.instagramReelPresence(root)
+        val feature = detector.detectFeature(InstagramSurfaces.packageName, root)
+        val actualFeature = when {
+            reelPresence == InAppDetector.InstagramReelPresence.VISIBLE -> InstagramDiscoveryPolicy.REELS
+            feature == InAppDetector.Feature.EXPLORE -> InstagramDiscoveryPolicy.EXPLORE
+            else -> null
+        }
+        if (actualFeature != expectedFeature) return@withContext
 
-        val home = HostNodeFinder.findClickable(root, InstagramSurfaces.homeTab) ?: return@withContext
-        syntheticClicks.onDispatch(SystemClock.elapsedRealtime())
-        val performed = try {
-            home.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        } catch (_: Exception) {
-            false
+        val home = HostNodeFinder.findClickable(root, InstagramSurfaces.homeTab)
+        val action = if (home != null) {
+            syntheticClicks.onDispatch(SystemClock.elapsedRealtime())
+            val clicked = try {
+                home.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            } catch (_: Exception) {
+                false
+            }
+            if (clicked) "home_click" else "home_click_failed"
+        } else {
+            if (performGlobalAction(GLOBAL_ACTION_BACK)) "back" else "back_failed"
         }
         entryPoint.nudgeLogger().i(
-            "instagram explore discovery gate return_home performed=$performed"
+            "instagram discovery gate feature=$expectedFeature action=$action"
         )
     }
 
-    private data class ReelBudgetCheckpoint(
+    private data class InstagramBudgetCheckpoint(
         val dayStartMs: Long,
         val deltaMs: Long,
         val usedMs: Long,
@@ -3464,8 +3538,8 @@ class NudgeAccessibilityService : AccessibilityService() {
         // The other direction: blocking has just stopped, and a screen sitting on a green tick
         // needs to stop claiming otherwise.
         teardown.step("connection_signal") { AccessibilityConnectionSignal.onConnectionChanged() }
-        teardown.step("stop_instagram_reel_clock") {
-            stopInstagramReelBudgetSession("service_destroyed")
+        teardown.step("stop_instagram_app_clock") {
+            stopInstagramAppBudgetSession("service_destroyed")
         }
         teardown.step("stop_foreground_clock") { stopForegroundTimeTicker("service_destroyed") }
         teardown.step("end_web_session") { endWebSession("service_destroyed") }
@@ -3481,9 +3555,6 @@ class NudgeAccessibilityService : AccessibilityService() {
             entryPoint.timeRemainingOverlayManager().clearServiceContext()
         }
         teardown.step("clear_tab_cover_overlay") { entryPoint.tabCoverOverlayManager().clearServiceContext() }
-        teardown.step("clear_instagram_explore_cover") {
-            if (::instagramExploreCover.isInitialized) instagramExploreCover.clearServiceContext()
-        }
         teardown.step("clear_passthrough_instance") { passthroughManagerInstance = null }
         teardown.step("disable_grayscale") {
             if (grayscaleActiveForPackage != null) {
@@ -3491,11 +3562,11 @@ class NudgeAccessibilityService : AccessibilityService() {
                 grayscaleActiveForPackage = null
             }
         }
-        // `stopInstagramReelBudgetSession` above updates the in-memory absolute state and normally
+        // `stopInstagramAppBudgetSession` above updates the in-memory absolute state and normally
         // persists its final delta on serviceScope. Flush the absolute state synchronously BEFORE
         // cancelling that scope so teardown preserves the last <=30-second tail while keeping the
         // service's long-standing invariant that serviceScope.cancel() is the final teardown step.
-        teardown.step("flush_instagram_reel_budget") {
+        teardown.step("flush_instagram_app_budget") {
             runBlocking(Dispatchers.IO) {
                 hydrateInstagramBudgetIfNeeded()
                 val todayStart = instagramBudgetTimeTracker.startOfToday()

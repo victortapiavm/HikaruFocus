@@ -138,11 +138,10 @@ object InstagramSurfaces : PlatformSurfaces {
     /**
      * HikaruFocus's two algorithmic discovery doors.
      *
-     * Kept separate from [vanishableTabs] on purpose. Nudge's generic Tab Vanish supports one
-     * hard-blocked feature window at a time; HikaruFocus wants Reels AND Search hidden together
-     * after a separate Reel-player-only budget is spent. The service therefore reuses the same
-     * tested overlay implementation with a second instance for Search rather than changing Nudge's
-     * generic rule semantics.
+     * These locators are used for tap interception and post-budget navigation only. Real-device QA
+     * showed that opaque accessibility-overlay covers are too fragile for Instagram: they can appear
+     * late, drift over DMs, or outlive the app. HikaruFocus therefore keeps the locators but no longer
+     * paints rectangles over either tab.
      */
     val discoveryGateTabs: Map<String, NodeLocator> = linkedMapOf(
         "REELS" to vanishableTabs.getValue("REELS"),

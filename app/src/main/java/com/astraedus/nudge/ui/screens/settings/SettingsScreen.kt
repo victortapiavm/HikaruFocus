@@ -288,11 +288,11 @@ fun SettingsScreen(
             )
 
             ListItem(
-                headlineContent = { Text("Reels discovery budget") },
+                headlineContent = { Text("Instagram discovery budget") },
                 supportingContent = {
                     Text(
-                        "After this much Reel-player time today, Reels and Search/Explore are closed. " +
-                            "Reels opened from DMs, links or profiles still work.\n" +
+                        "After this much total Instagram time today, Reels and Search/Explore are closed. " +
+                            "Home, DMs and profiles remain usable.\n" +
                             "Today: ${timeTracker.formatDuration(instagramDiscoveryUsedToday)} / " +
                             "$instagramDiscoveryBudgetMinutes min"
                     )

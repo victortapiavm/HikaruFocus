@@ -134,11 +134,13 @@ class InAppDetectorClipsViewerTest {
 
     @Test
     fun `active Home tab does not spend HikaruFocus reel budget`() {
-        org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(rootWithActiveTab("feed_tab")))
+        val root = rootWithActiveTab("feed_tab")
+        org.junit.Assert.assertFalse(detector.isInstagramReelPlayer(root))
         assertEquals(
             InAppDetector.InstagramReelPresence.NOT_VISIBLE,
-            detector.instagramReelPresence(rootWithActiveTab("feed_tab"))
+            detector.instagramReelPresence(root)
         )
+        assertNull(detector.detectFeature(ig, root))
     }
 
     @Test

@@ -1,14 +1,13 @@
 package com.astraedus.nudge.domain.focus
 
 /**
- * The one persisted number HikaruFocus needs for Instagram: how much time the user has spent in
- * Instagram's actual full-screen Reel player today.
+ * The one persisted number HikaruFocus needs for Instagram: how much foreground time the user has
+ * spent in Instagram today.
  *
- * This is intentionally NOT Instagram foreground time. Home, DMs and profiles are social/productive
- * surfaces and must never spend the discovery budget. It is also intentionally not an enforcement
- * decision for the Reel player itself: once the budget is exhausted HikaruFocus closes discovery
- * entry points (Reels + Search/Explore), while a Reel reached from a DM, WhatsApp, a profile or a
- * direct link remains playable.
+ * The budget is deliberately app-wide. Home, DMs, profiles, Reels and Explore all consume the same
+ * allowance because the user's intent is "20 minutes of Instagram, then remove algorithmic discovery"
+ * rather than "20 minutes of Reels specifically". Enforcement is still selective: DMs/profile/Home
+ * remain usable after the limit, while Reels and Explore are ejected back to Home.
  *
  * The state is keyed by local-day start rather than by a date string so DataStore can keep it in two
  * primitive longs. [normalize] makes reset-on-midnight explicit and testable.
@@ -51,6 +50,20 @@ object InstagramDiscoveryBudget {
         return current.copy(usedMs = safeUsed)
     }
 
+    /**
+     * Replace the cached reading with an absolute UsageStats foreground-time sample for today.
+     * Within a day the value is monotonic: a transient platform under-read must never unlock an
+     * already-exhausted budget. A new local day still resets through [normalize].
+     */
+    fun syncAbsoluteUsage(
+        state: InstagramDiscoveryBudgetState,
+        todayStartMs: Long,
+        absoluteUsageMs: Long
+    ): InstagramDiscoveryBudgetState {
+        val current = normalize(state, todayStartMs)
+        return current.copy(usedMs = maxOf(current.usedMs, absoluteUsageMs.coerceAtLeast(0L)))
+    }
+
     fun isLocked(
         state: InstagramDiscoveryBudgetState,
         todayStartMs: Long,
@@ -83,15 +96,15 @@ object InstagramDiscoveryPolicy {
     const val REELS = "REELS"
     const val EXPLORE = "EXPLORE"
 
-    /** Both algorithmic launchpads disappear after the budget. */
+    /** Both algorithmic launchpads are blocked after the budget. */
     fun shouldGateTab(featureKey: String?, locked: Boolean): Boolean =
         locked && (featureKey == REELS || featureKey == EXPLORE)
 
     /**
-     * Explore may be reached by swiping even when its tab is covered, so it is returned to Home.
-     * Reels deliberately NEVER returns true here: externally/shared/profile-opened Reels remain
-     * playable after the discovery budget is spent.
+     * Once locked, both discovery surfaces are returned to Home. This is the reliable enforcement
+     * layer: Accessibility cannot actually mutate Instagram's own view hierarchy to remove buttons,
+     * and overlay covers proved visually and lifecycle-fragile on real devices.
      */
     fun shouldReturnHome(featureKey: String?, locked: Boolean): Boolean =
-        locked && featureKey == EXPLORE
+        locked && (featureKey == REELS || featureKey == EXPLORE)
 }

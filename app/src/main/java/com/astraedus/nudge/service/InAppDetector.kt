@@ -134,10 +134,9 @@ class InAppDetector @Inject constructor(
      * Classify whether Instagram's actual full-screen Reel player is visible.
      *
      * This is intentionally narrower than [Feature.REELS]. Nudge historically treats Instagram's
-     * Home feed as REELS-equivalent for generic doomscroll rules; HikaruFocus's 20-minute discovery
-     * budget must not. The budget counts the player itself regardless of how the user arrived there
-     * (Reels tab, DM, WhatsApp/deep link, profile), while post-budget enforcement closes only the
-     * discovery entry points.
+     * Home feed as REELS-equivalent for generic doomscroll rules. HikaruFocus now uses this method
+     * only to decide whether post-budget enforcement is currently sitting on the actual Reel player;
+     * the daily budget itself is app-wide foreground time.
      */
     fun instagramReelPresence(rootNode: AccessibilityNodeInfo?): InstagramReelPresence {
         if (rootNode == null) return InstagramReelPresence.UNKNOWN
@@ -151,14 +150,12 @@ class InAppDetector @Inject constructor(
             // Resilience signal: when the user entered through Instagram's Reels tab, the tab itself
             // is a stronger and considerably more stable contract than the internal player-container
             // ids. Those container ids have already varied by entry route/device, and HikaruFocus's
-            // first real-device test exposed the failure mode: if none resolves, the dedicated budget
-            // clock never starts and the app appears to do absolutely nothing no matter how long the
-            // user watches Reels.
+            // first real-device test exposed the failure mode: if none resolves, Reels can evade the
+            // post-budget ejection path even though the app-wide budget is already exhausted.
             //
             // IMPORTANT: do not reuse detectInstagram() here. Generic Nudge intentionally maps the
-            // HOME feed to Feature.REELS for historical doom-scroll rules; the HikaruFocus budget must
-            // count only the actual Reels surface. Asking specifically whether clips_tab is active
-            // preserves that boundary while giving tab-entered Reels a second independent signal.
+            // HOME feed to Feature.REELS for historical doom-scroll rules. Asking specifically whether
+            // clips_tab is active preserves the boundary between Home and the actual Reel player.
             when (findActiveInstagramTab(rootNode)) {
                 "clips_tab" -> InstagramReelPresence.VISIBLE
                 "feed_tab", "search_tab", "profile_tab", "direct_tab" ->
@@ -242,7 +239,11 @@ class InAppDetector @Inject constructor(
         return when (activeTab) {
             "clips_tab" -> Feature.REELS
             "search_tab" -> Feature.EXPLORE
-            "feed_tab" -> Feature.REELS  // Home feed = reels-equivalent
+            // HikaruFocus keeps Home usable after the Instagram discovery budget. The upstream Nudge
+            // detector treated Home as REELS-equivalent for doom-scroll rules, but that makes an
+            // ejection from blocked Reels land straight onto another REELS block. Home is therefore
+            // explicitly a non-feature surface in this fork.
+            "feed_tab" -> null
             else -> {
                 // Fallback: text-based detection for older Instagram versions
                 detectInstagramByText(root)

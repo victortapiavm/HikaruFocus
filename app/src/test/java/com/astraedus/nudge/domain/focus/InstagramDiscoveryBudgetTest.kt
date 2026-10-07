@@ -10,10 +10,14 @@ class InstagramDiscoveryBudgetTest {
     private val today = 1_000_000L
 
     @Test
-    fun `home dm and profile time cannot be represented as reel usage by accident`() {
-        val state = InstagramDiscoveryBudget.normalize(InstagramDiscoveryBudget.EMPTY, today)
+    fun `absolute Instagram foreground time is the discovery budget`() {
+        val state = InstagramDiscoveryBudget.syncAbsoluteUsage(
+            InstagramDiscoveryBudget.EMPTY,
+            today,
+            7 * 60_000L
+        )
 
-        assertEquals(0L, state.usedMs)
+        assertEquals(7 * 60_000L, state.usedMs)
         assertFalse(InstagramDiscoveryBudget.isLocked(state, today))
     }
 
@@ -70,8 +74,9 @@ class InstagramDiscoveryBudgetTest {
     }
 
     @Test
-    fun `locked budget never ejects a reel player`() {
-        assertFalse(InstagramDiscoveryPolicy.shouldReturnHome(InstagramDiscoveryPolicy.REELS, locked = true))
+    fun `locked budget returns reel player to a safe Instagram surface`() {
+        assertTrue(InstagramDiscoveryPolicy.shouldReturnHome(InstagramDiscoveryPolicy.REELS, locked = true))
+        assertFalse(InstagramDiscoveryPolicy.shouldReturnHome(InstagramDiscoveryPolicy.REELS, locked = false))
     }
 
     @Test
@@ -93,6 +98,23 @@ class InstagramDiscoveryBudgetTest {
             newerStored,
             InstagramDiscoveryBudget.mergePersisted(staleCheckpoint, newerStored)
         )
+    }
+
+    @Test
+    fun `usage stats under-read cannot unlock an exhausted day`() {
+        val exhausted = InstagramDiscoveryBudgetState(
+            today,
+            InstagramDiscoveryBudget.limitMs(20) + 15_000L
+        )
+
+        val synced = InstagramDiscoveryBudget.syncAbsoluteUsage(
+            exhausted,
+            today,
+            5 * 60_000L
+        )
+
+        assertEquals(exhausted, synced)
+        assertTrue(InstagramDiscoveryBudget.isLocked(synced, today))
     }
 
     @Test
