@@ -16,7 +16,6 @@ jobs:
       HIKARUFOCUS_CI_STORE_PASSWORD: ${{ secrets.HIKARUFOCUS_CI_STORE_PASSWORD }}
       HIKARUFOCUS_CI_KEY_ALIAS: ${{ secrets.HIKARUFOCUS_CI_KEY_ALIAS }}
       HIKARUFOCUS_CI_KEY_PASSWORD: ${{ secrets.HIKARUFOCUS_CI_KEY_PASSWORD }}
-      HIKARUFOCUS_CI_KEYSTORE: ${{ runner.temp }}/hikarufocus-ci.p12
     permissions:
       contents: read
 
@@ -36,9 +35,11 @@ jobs:
         if: env.HIKARUFOCUS_KEYSTORE_B64 != ''
         shell: bash
         run: |
-          printf '%s' "$HIKARUFOCUS_KEYSTORE_B64" | base64 --decode > "$HIKARUFOCUS_CI_KEYSTORE"
+          printf '%s' "$HIKARUFOCUS_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/hikarufocus-ci.p12"
 
       - name: Unit tests, lint, and debug APK
+        env:
+          HIKARUFOCUS_CI_KEYSTORE: ${{ runner.temp }}/hikarufocus-ci.p12
         run: ./gradlew test lintDebug assembleDebug
 
       - name: Warn when APK has an ephemeral CI signature
