@@ -11,6 +11,12 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      HIKARUFOCUS_KEYSTORE_B64: ${{ secrets.HIKARUFOCUS_KEYSTORE_B64 }}
+      HIKARUFOCUS_CI_STORE_PASSWORD: ${{ secrets.HIKARUFOCUS_CI_STORE_PASSWORD }}
+      HIKARUFOCUS_CI_KEY_ALIAS: ${{ secrets.HIKARUFOCUS_CI_KEY_ALIAS }}
+      HIKARUFOCUS_CI_KEY_PASSWORD: ${{ secrets.HIKARUFOCUS_CI_KEY_PASSWORD }}
+      HIKARUFOCUS_CI_KEYSTORE: ${{ runner.temp }}/hikarufocus-ci.p12
     permissions:
       contents: read
 
@@ -26,11 +32,22 @@ jobs:
         with:
           validate-wrappers: false
 
+      - name: Restore stable HikaruFocus signing key
+        if: env.HIKARUFOCUS_KEYSTORE_B64 != ''
+        shell: bash
+        run: |
+          printf '%s' "$HIKARUFOCUS_KEYSTORE_B64" | base64 --decode > "$HIKARUFOCUS_CI_KEYSTORE"
+
       - name: Unit tests, lint, and debug APK
         run: ./gradlew test lintDebug assembleDebug
 
+      - name: Warn when APK has an ephemeral CI signature
+        if: success() && env.HIKARUFOCUS_KEYSTORE_B64 == ''
+        run: |
+          echo "::warning::Stable signing secrets are not configured. CI verified the APK, but it will not be published for installation."
+
       - name: Upload debug APK
-        if: success()
+        if: success() && env.HIKARUFOCUS_KEYSTORE_B64 != ''
         uses: actions/upload-artifact@v4
         with:
           name: hikarufocus-debug

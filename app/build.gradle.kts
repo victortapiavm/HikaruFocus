@@ -16,6 +16,20 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Installable CI builds may opt into one persistent signing identity. GitHub runners otherwise
+// create a fresh ~/.android/debug.keystore on a clean VM, so consecutive debug APKs can have
+// different certificates and Android refuses to update the installed package.
+val ciSigningStore = System.getenv("HIKARUFOCUS_CI_KEYSTORE")
+    ?.takeIf { it.isNotBlank() }
+    ?.let(::file)
+    ?.takeIf { it.exists() }
+val ciSigningStorePassword = System.getenv("HIKARUFOCUS_CI_STORE_PASSWORD")
+    ?.takeIf { it.isNotBlank() }
+val ciSigningKeyAlias = System.getenv("HIKARUFOCUS_CI_KEY_ALIAS")
+    ?.takeIf { it.isNotBlank() }
+val ciSigningKeyPassword = System.getenv("HIKARUFOCUS_CI_KEY_PASSWORD")
+    ?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.astraedus.nudge"
     compileSdk = 36
@@ -31,6 +45,20 @@ android {
     }
 
     signingConfigs {
+        if (
+            ciSigningStore != null &&
+            ciSigningStorePassword != null &&
+            ciSigningKeyAlias != null &&
+            ciSigningKeyPassword != null
+        ) {
+            create("hikarufocusCi") {
+                storeFile = ciSigningStore
+                storePassword = ciSigningStorePassword
+                keyAlias = ciSigningKeyAlias
+                keyPassword = ciSigningKeyPassword
+            }
+        }
+
         create("release") {
             storeFile = file(keystoreProperties.getProperty("storeFile", "../nudge-release.keystore"))
             storePassword = keystoreProperties.getProperty("storePassword", "")
@@ -40,6 +68,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfigs.findByName("hikarufocusCi")?.let { signingConfig = it }
+        }
+
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
