@@ -43,6 +43,10 @@ class InstagramDiscoveryWiringContractTest {
         assertTrue(body.contains("signal.packageName == InstagramSurfaces.packageName"))
         assertTrue(body.contains("startInstagramAppBudgetSession()"))
         assertTrue(!body.contains("instagramReelPresence"))
+        assertTrue(
+            "transient system surfaces must not stop the Instagram clock and create a no-restart gap",
+            !body.contains("stopInstagramAppBudgetSession(\"system_surface\")")
+        )
     }
 
     @Test

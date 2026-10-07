@@ -1549,7 +1549,7 @@ class NudgeAccessibilityService : AccessibilityService() {
             }
             is ForegroundSignal.Home -> stopInstagramAppBudgetSession("home")
             is ForegroundSignal.OwnUi -> stopInstagramAppBudgetSession("own_ui")
-            is ForegroundSignal.SystemSurface -> stopInstagramAppBudgetSession("system_surface")
+            is ForegroundSignal.SystemSurface,
             is ForegroundSignal.AwarenessOverlay,
             is ForegroundSignal.Transient,
             is ForegroundSignal.PipOnly,
